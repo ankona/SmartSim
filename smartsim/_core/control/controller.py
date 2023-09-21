@@ -26,6 +26,7 @@
 
 from __future__ import annotations
 
+import itertools
 import os.path as osp
 import pickle
 import signal
@@ -38,7 +39,8 @@ from smartredis import Client
 from ..._core.launcher.step import Step
 from ..._core.utils.redis import db_is_active, set_ml_model, set_script, shutdown_db
 from ...database import Orchestrator
-from ...entity import Ensemble, EntityList, EntitySequence, Model, SmartSimEntity
+from ...entity import DBNode, Ensemble, EntityList, EntitySequence, Model, SmartSimEntity
+
 from ...error import LauncherError, SmartSimError, SSInternalError, SSUnsupportedError
 from ...log import get_logger
 from ...settings.base import BatchSettings
@@ -53,6 +55,7 @@ from ..launcher import (
 )
 from ..launcher.launcher import Launcher
 from ..utils import check_cluster_status, create_cluster
+from ..utils.network import get_ip_from_host
 from .job import Job
 from .jobmanager import JobManager
 from .manifest import Manifest
@@ -227,6 +230,19 @@ class Controller:
         with JM_LOCK:
             return self._jobs.completed
 
+    def get_db_jobs(self) -> t.Dict[str, t.Tuple[Job, t.Union[DBNode, Orchestrator]]]:
+        """Return a dictionary of database job data
+
+        :returns: dict[str, Job]
+        """
+        with JM_LOCK:
+            db_jobs = {
+                job.name: (job, job.entity)
+                for job in self._jobs.db_jobs.values()
+                if isinstance(job.entity, (DBNode, Orchestrator))
+            }
+            return db_jobs
+
     def get_entity_status(
         self, entity: t.Union[SmartSimEntity, EntitySequence[SmartSimEntity]]
     ) -> str:
@@ -385,7 +401,7 @@ class Controller:
 
         # set the jobs in the job manager to provide SSDB variable to entities
         # if _host isnt set within each
-        self._jobs.set_db_hosts(orchestrator)
+        self._set_db_hosts(orchestrator)
 
         # create the database cluster
         if orchestrator.num_shards > 2:
@@ -494,7 +510,7 @@ class Controller:
         :type entity:  Model
         """
         client_env: t.Dict[str, t.Union[str, int, float, bool]] = {}
-        addresses = self._jobs.get_db_host_addresses()
+        addresses = self._get_db_host_addresses()
         if addresses:
             if len(addresses) <= 128:
                 client_env["SSDB"] = ",".join(addresses)
@@ -651,11 +667,45 @@ class Controller:
 
             return orc
 
+    def _get_db_host_addresses(self) -> t.List[str]:
+        """Retrieve the list of hosts for the database
+
+        :return: list of host ip addresses
+        :rtype: list[str]
+        """
+        addresses: t.List[str] = []
+        db_jobs = self.get_db_jobs()
+
+        for db_job, db_entity in db_jobs.values():
+            addr_options = itertools.product(db_job.hosts, db_entity.ports)
+
+            for host_addr, port in addr_options:
+                ip_addr = get_ip_from_host(host_addr)
+                addresses.append(f"{ip_addr}:{port}")
+        return addresses
+
+    def _set_db_hosts(self, orchestrator: Orchestrator) -> None:
+        """Set the DB hosts in db_jobs so future entities can query this
+
+        :param orchestrator: orchestrator instance
+        :type orchestrator: Orchestrator
+        """
+        # should only be called during launch in the controller
+        with JM_LOCK:
+            if orchestrator.batch:
+                self._jobs.db_jobs[orchestrator.name].hosts = orchestrator.hosts
+            else:
+                for dbnode in orchestrator.dbnodes:
+                    if not dbnode.is_mpmd:
+                        self._jobs.db_jobs[dbnode.name].hosts = [dbnode.host]
+                    else:
+                        self._jobs.db_jobs[dbnode.name].hosts = dbnode.hosts
+
     def _set_dbobjects(self, manifest: Manifest) -> None:
         if not manifest.has_db_objects:
             return
 
-        db_addresses = self._jobs.get_db_host_addresses()
+        db_addresses = self._get_db_host_addresses()
 
         hosts = list({address.split(":")[0] for address in db_addresses})
         ports = list({int(address.split(":")[-1]) for address in db_addresses})

@@ -788,7 +788,7 @@ class Orchestrator(EntityList[DBNode]):
     ) -> t.List[str]:
         start_script_args = [
             "-m",
-            "smartsim._core.entrypoints.redis",  # entrypoint
+            "smartsim._core.entrypoints.db",  # entrypoint
             "+ifname=" + ",".join(self._interfaces),  # pass interface to start script
             "+command",  # command flag for argparser
             self._redis_exe,  # redis-server
