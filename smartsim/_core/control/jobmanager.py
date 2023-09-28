@@ -24,7 +24,7 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# import itertools
+
 import time
 import typing as t
 from collections import ChainMap
@@ -259,9 +259,6 @@ class JobManager:
         :type entity: SmartSimEntity | EntitySequence
         :returns: tuple of status
         """
-        for hook in self.on_timestep_hook:
-            hook(job, logger)
-
         with self._lock:
             try:
                 if entity.name in self.completed:
@@ -272,6 +269,9 @@ class JobManager:
                 raise SmartSimError(
                     f"Entity {entity.name} has not been launched in this Experiment"
                 ) from None
+
+            for hook in self.on_timestep_hook:
+                hook(job, logger)
 
             return job.status
 
@@ -324,39 +324,6 @@ class JobManager:
                 self.db_jobs[entity_name] = job
             else:
                 self.jobs[entity_name] = job
-
-    def get_db_host_addresses(self) -> t.List[str]:
-        """Retrieve the list of hosts for the database
-
-        :return: list of host ip addresses
-        :rtype: list[str]
-        """
-        addresses = []
-        for db_job in self.db_jobs.values():
-            if isinstance(db_job.entity, (DBNode, Orchestrator)):
-                db_entity = db_job.entity
-
-                for combine in itertools.product(db_job.hosts, db_entity.ports):
-                    ip_addr = get_ip_from_host(combine[0])
-                    addresses.append(":".join((ip_addr, str(combine[1]))))
-        return addresses
-
-    def set_db_hosts(self, orchestrator: Orchestrator) -> None:
-        """Set the DB hosts in db_jobs so future entities can query this
-
-        :param orchestrator: orchestrator instance
-        :type orchestrator: Orchestrator
-        """
-        # should only be called during launch in the controller
-        with self._lock:
-            if orchestrator.batch:
-                self.db_jobs[orchestrator.name].hosts = orchestrator.hosts
-            else:
-                for dbnode in orchestrator.entities:
-                    if not dbnode.is_mpmd:
-                        self.db_jobs[dbnode.name].hosts = [dbnode.host]
-                    else:
-                        self.db_jobs[dbnode.name].hosts = dbnode.hosts
 
     def signal_interrupt(self, signo: int, _frame: t.Optional[FrameType]) -> None:
         if not signo:

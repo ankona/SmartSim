@@ -39,7 +39,14 @@ from smartredis import Client
 from ..._core.launcher.step import Step
 from ..._core.utils.redis import db_is_active, set_ml_model, set_script, shutdown_db
 from ...database import Orchestrator
-from ...entity import DBNode, Ensemble, EntityList, EntitySequence, Model, SmartSimEntity
+from ...entity import (
+    DBNode,
+    Ensemble,
+    EntityList,
+    EntitySequence,
+    Model,
+    SmartSimEntity,
+)
 
 from ...error import LauncherError, SmartSimError, SSInternalError, SSUnsupportedError
 from ...log import get_logger
