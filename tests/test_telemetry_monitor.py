@@ -614,7 +614,7 @@ def test_telemetry_db_only_without_generate(fileutils, wlmutils, monkeypatch):
         try:
             exp.start(orc)
 
-            snooze_nonblocking(test_dir, max_delay=60, post_data_delay=30)
+            snooze_nonblocking(test_dir, max_delay=60, post_data_delay=10)
 
             telemetry_output_path = pathlib.Path(test_dir) / serialize.TELMON_SUBDIR
             start_events = list(telemetry_output_path.rglob("start.json"))
@@ -625,7 +625,7 @@ def test_telemetry_db_only_without_generate(fileutils, wlmutils, monkeypatch):
         finally:
             exp.stop(orc)
         
-        snooze_nonblocking(test_dir, max_delay=60, post_data_delay=30)
+        snooze_nonblocking(test_dir, max_delay=60, post_data_delay=10)
         assert exp.get_status(orc)[0] == STATUS_CANCELLED
 
         stop_events = list(telemetry_output_path.rglob("stop.json"))
@@ -657,8 +657,6 @@ def test_telemetry_db_and_model(fileutils, wlmutils, monkeypatch):
         orc = exp.create_database(port=test_port, interface=test_interface)
         try:
             exp.start(orc)
-
-            snooze_nonblocking(test_dir, max_delay=60, post_data_delay=30)
 
             # create run settings
             app_settings = exp.create_run_settings("python", test_script)
