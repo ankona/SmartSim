@@ -36,7 +36,7 @@ from ._core.utils import init_default
 from .database import Orchestrator
 from .entity import Ensemble, Model, SmartSimEntity
 from .error import SmartSimError
-from .log import get_logger
+from .log import get_logger, add_exp_loggers
 from .settings import settings, base, Container
 from .wlm import detect_launcher
 
@@ -116,6 +116,7 @@ class Experiment:
                          Defaults to "local"
         :type launcher: str, optional
         """
+        add_exp_loggers(exp_path, logger, None, __name__)
         self.name = name
         if exp_path:
             if not isinstance(exp_path, str):
