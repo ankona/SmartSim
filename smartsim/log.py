@@ -23,6 +23,7 @@
 # CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+from logging.handlers import QueueHandler
 import typing as t
 import logging
 import os
@@ -129,6 +130,8 @@ def add_exp_loggers(
         log_to_file(out_path, "INFO", logger, fmt, LowPassFilter(maximum_level="INFO"))
         log_to_file(err_path, "WARN", logger, fmt)
 
+        log_to_queue(5555, logger)
+
 
 class LowPassFilter(logging.Filter):
     """A filter that passes all records below a specified level"""
@@ -148,6 +151,21 @@ class LowPassFilter(logging.Filter):
         if record.levelno <= logging.getLevelName(self.max):
             return True
         return False
+
+
+def log_to_queue(
+    port: int = 5555,
+    logger: t.Optional[logging.Logger] = None,
+):
+    import zmq
+    import zmq.log.handlers
+
+    context = zmq.Context()
+    pub = context.socket(zmq.PUB)
+    pub.connect(f"tcp://127.0.0.1:{port}")
+
+    queueHandler = zmq.log.handlers.PUBHandler(pub)
+    logger.addHandler(queueHandler)
 
 
 def log_to_file(

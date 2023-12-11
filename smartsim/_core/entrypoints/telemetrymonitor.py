@@ -34,6 +34,7 @@ import sys
 import threading
 import time
 import typing as t
+import zmq
 
 from dataclasses import dataclass, field
 from types import FrameType
@@ -42,6 +43,7 @@ from watchdog.observers import Observer
 from watchdog.observers.api import BaseObserver
 from watchdog.events import PatternMatchingEventHandler, LoggingEventHandler
 from watchdog.events import FileCreatedEvent, FileModifiedEvent
+from zmq import Socket
 
 from smartsim._core.config import CONFIG
 from smartsim._core.control.job import JobEntity, _JobKey
@@ -331,6 +333,7 @@ class ManifestEventHandler(PatternMatchingEventHandler):
             "local": LocalLauncher,
         }
 
+
     def init_launcher(self, launcher: str) -> Launcher:
         """Initialize the controller with a specific type of launcher.
         SmartSim currently supports slurm, pbs(pro), cobalt, lsf,
@@ -518,6 +521,36 @@ def can_shutdown(action_handler: ManifestEventHandler, logger: logging.Logger) -
     return not has_running_jobs
 
 
+def register_log_listener(exp_path: str) -> t.Tuple[Socket, logging.Logger]:
+    port = 5555
+    q_context = zmq.Context()
+    sub = q_context.socket(zmq.SUB)
+    sub.bind(f'tcp://*:{port}')
+    sub.setsockopt(zmq.SUBSCRIBE, b'')
+
+    exp_logger = logging.getLogger("experiment-logs")
+    exp_logger.propagate = False
+    exp_logger.setLevel("DEBUG")
+
+    exp_logfile = pathlib.Path(exp_path) / TELMON_SUBDIR / "smartsim.out"
+    exp_file_handler = logging.FileHandler(exp_logfile)
+
+    exp_logger.addHandler(exp_file_handler)
+    return sub, exp_logger
+
+def message_loop(exp_path: str):
+    sub, exp_logger = register_log_listener(exp_path)
+
+    while True:
+        level_bytes, msg_bytes = sub.recv_multipart()
+        level = level_bytes.decode('utf-8')
+        message = msg_bytes.decode('utf-8').rstrip()
+
+        ival = logging.getLevelName(level)
+
+        exp_logger.log(ival, f'log message received: {level} - {message}')
+
+
 def event_loop(
     observer: BaseObserver,
     action_handler: ManifestEventHandler,
@@ -542,6 +575,8 @@ def event_loop(
     elapsed: int = 0
     last_ts: int = get_ts()
 
+
+
     while observer.is_alive():
         timestamp = get_ts()
         logger.debug(f"Telemetry timestep: {timestamp}")
@@ -558,7 +593,7 @@ def event_loop(
             # reset cooldown any time there are still jobs running
             elapsed = 0
 
-        time.sleep(frequency)
+        # time.sleep(frequency)
 
 
 def main(
@@ -605,6 +640,9 @@ def main(
             # a manifest may not exist depending on startup timing
             action_handler.process_manifest(str(manifest_path))
 
+        q_thread = threading.Thread(target=message_loop, args=[experiment_dir])
+        q_thread.start()
+
         observer.schedule(log_handler, experiment_dir, recursive=True)  # type:ignore
         observer.schedule(action_handler, experiment_dir, recursive=True)  # type:ignore
         observer.start()  # type: ignore
@@ -617,6 +655,8 @@ def main(
         if observer.is_alive():
             observer.stop()  # type: ignore
             observer.join()
+        if q_thread and q_thread.is_alive():
+            q_thread.join()
 
     return os.EX_SOFTWARE
 
@@ -683,7 +723,7 @@ if __name__ == "__main__":
             cooldown_duration=args.cooldown,
         )
         sys.exit(0)
-    except Exception:
+    except Exception as ex:
         log.exception(
             "Shutting down telemetry monitor due to unexpected error", exc_info=True
         )
