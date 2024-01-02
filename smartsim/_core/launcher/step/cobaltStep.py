@@ -26,51 +26,16 @@
 
 import os
 import stat
-import typing as t
+# import typing as t
 
 from ....log import get_logger
-from ....settings import CobaltBatchSettings
-from .step import Step
+# from ....settings import CobaltBatchSettings
+from .step import BatchStepBase  # , Step
 
 logger = get_logger(__name__)
 
 
-class CobaltBatchStep(Step):
-    def __init__(
-        self, name: str, cwd: str, batch_settings: CobaltBatchSettings
-    ) -> None:
-        """Initialize a Cobalt qsub step
-
-        :param name: name of the entity to launch
-        :type name: str
-        :param cwd: path to launch dir
-        :type cwd: str
-        :param batch_settings: batch settings for entity
-        :type batch_settings: CobaltBatchSettings
-        """
-        super().__init__(name, cwd, batch_settings)
-        self.step_cmds: t.List[t.List[str]] = []
-        self.managed = True
-        self.batch_settings = batch_settings
-
-    def get_launch_cmd(self) -> t.List[str]:
-        """Get the launch command for the batch
-
-        :return: launch command for the batch
-        :rtype: list[str]
-        """
-        script = self._write_script()
-        return [self.batch_settings.batch_cmd, script]
-
-    def add_to_batch(self, step: Step) -> None:
-        """Add a job step to this batch
-
-        :param step: a job step instance e.g. SrunStep
-        :type step: Step
-        """
-        launch_cmd = step.get_launch_cmd()
-        self.step_cmds.append(launch_cmd)
-        logger.debug(f"Added step command to batch for {step.name}")
+class CobaltBatchStep(BatchStepBase):
 
     def _write_script(self) -> str:
         """Write the batch script

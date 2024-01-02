@@ -34,12 +34,15 @@ import typing as t
 from os import makedirs
 
 from smartsim._core.config import CONFIG
-from smartsim.error.errors import SmartSimError, UnproxyableStepError
+from smartsim.error.errors import UnproxyableStepError
 
 from ....log import get_logger
 from ....settings.base import RunSettings, SettingsBase
 from ...utils.helpers import encode_cmd, get_base_36_repr
 from ..colocated import write_colocated_launch_script
+
+from smartsim.settings.base import BatchSettings
+from abc import abstractmethod
 
 logger = get_logger(__name__)
 
@@ -109,14 +112,46 @@ class Step:
         write_colocated_launch_script(script_path, db_log_file, db_settings)
         return script_path
 
-    # pylint: disable=no-self-use
+
+class BatchStepBase(Step):
+
+    def __init__(self, name: str, cwd: str, batch_settings: BatchSettings) -> None:
+        """Initialize a Slurm Sbatch step
+
+        :param name: name of the entity to launch
+        :type name: str
+        :param cwd: path to launch dir
+        :type cwd: str
+        :param batch_settings: batch settings for entity
+        :type batch_settings: SbatchSettings
+        """
+        super().__init__(name, cwd, batch_settings)
+        self.step_cmds: t.List[t.List[str]] = []
+        self.managed = True
+        self.batch_settings = batch_settings
+
+    def get_launch_cmd(self) -> t.List[str]:
+        """Get the launch command for the batch
+
+        :return: launch command for the batch
+        :rtype: list[str]
+        """
+        script = self._write_script()
+        return [self.batch_settings.batch_cmd, script]
+
     def add_to_batch(self, step: Step) -> None:
         """Add a job step to this batch
 
         :param step: a job step instance e.g. SrunStep
         :type step: Step
         """
-        raise SmartSimError("add_to_batch not implemented for this step type")
+        launch_cmd = step.get_launch_cmd()
+        self.step_cmds.append(launch_cmd)
+        logger.debug(f"Added step command to batch for {step.name}")
+
+    @abstractmethod
+    def _write_script(self) -> str:
+        ...
 
 
 _StepT = t.TypeVar("_StepT", bound=Step)

@@ -31,28 +31,13 @@ from shlex import split as sh_split
 
 from ....error import AllocationError
 from ....log import get_logger
-from ....settings import RunSettings, SbatchSettings, Singularity, SrunSettings
-from .step import Step
+from ....settings import RunSettings, Singularity, SrunSettings
+from .step import BatchStepBase, Step
 
 logger = get_logger(__name__)
 
 
-class SbatchStep(Step):
-    def __init__(self, name: str, cwd: str, batch_settings: SbatchSettings) -> None:
-        """Initialize a Slurm Sbatch step
-
-        :param name: name of the entity to launch
-        :type name: str
-        :param cwd: path to launch dir
-        :type cwd: str
-        :param batch_settings: batch settings for entity
-        :type batch_settings: SbatchSettings
-        """
-        super().__init__(name, cwd, batch_settings)
-        self.step_cmds: t.List[t.List[str]] = []
-        self.managed = True
-        self.batch_settings = batch_settings
-
+class SbatchStep(BatchStepBase):
     def get_launch_cmd(self) -> t.List[str]:
         """Get the launch command for the batch
 
