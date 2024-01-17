@@ -199,10 +199,7 @@ def get_logger(
     if user_log_level != "developer":
         name = "SmartSim"
 
-    if CONFIG.telemetry_enabled:
-        name += "Ctx"  # avoid logger name collision w/non-ctx aware logger
-        logging.setLoggerClass(ContextAwareLogger)
-
+    logging.setLoggerClass(ContextAwareLogger)
     logger = logging.getLogger(name)
 
     if log_level:
