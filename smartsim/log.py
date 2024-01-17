@@ -121,13 +121,17 @@ class ContextInjectingLogFilter(logging.Filter):
     information about the experiment being executed"""
 
     def filter(self, record: logging.LogRecord) -> bool:
-        record.exp_path = ctx_exp_path.get()
+        exp_path = ctx_exp_path.get() or "EXP-PATH-NOT-SET"
+        record.exp_path = exp_path
         return True
 
 
 class ContextAwareLogger(logging.Logger):
     """A logger customized to automatically write experiment logs to a
     dynamic target directory by inspecting the value of a context var"""
+    def __init__(self, name: str, level: t.Union[int, str] = 0) -> None:
+        super().__init__(name, level)
+        self.addFilter(ContextInjectingLogFilter(name="exp-ctx-log-filter"))
 
     def _log(
         self,
@@ -196,10 +200,11 @@ def get_logger(
     if user_log_level != "developer":
         name = "SmartSim"
 
-    logging.setLoggerClass(ContextAwareLogger)
-    logger = logging.getLogger(name)
+    if CONFIG.telemetry_enabled:
+        name += "Ctx"  # avoid logger name collision w/non-ctx aware logger
+        logging.setLoggerClass(ContextAwareLogger)
 
-    logger.addFilter(ContextInjectingLogFilter())
+    logger = logging.getLogger(name)
 
     if log_level:
         logger.setLevel(log_level)
