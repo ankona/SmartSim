@@ -121,8 +121,7 @@ class ContextInjectingLogFilter(logging.Filter):
     information about the experiment being executed"""
 
     def filter(self, record: logging.LogRecord) -> bool:
-        exp_path = ctx_exp_path.get() or "EXP-PATH-NOT-SET"
-        record.exp_path = exp_path
+        record.exp_path = ctx_exp_path.get()
         return True
 
 
