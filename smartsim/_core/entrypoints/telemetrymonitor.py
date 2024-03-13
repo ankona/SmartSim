@@ -177,7 +177,7 @@ if __name__ == "__main__":
     # Must register cleanup before the main loop is running
     def cleanup_telemetry_monitor(_signo: int, _frame: t.Optional[FrameType]) -> None:
         """Create an enclosure on `manifest_observer` to avoid global variables"""
-        asyncio.run(telemetry_monitor.cleanup())
+        telemetry_monitor.cleanup()
 
     register_signal_handlers(cleanup_telemetry_monitor)
 
