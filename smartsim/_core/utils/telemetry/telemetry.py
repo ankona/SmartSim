@@ -453,18 +453,6 @@ class TelemetryMonitor:
         unmanaged_jobs = (
             list(self._action_handler.tracked_jobs) if self._action_handler else []
         )
-        # job_manager_dbs = (
-        #     {x.entity for x in self._action_handler.job_manager.db_jobs.values()}
-        #     if self._action_handler
-        #     else []
-        # )
-
-        # TODO: !!!!!! should the first case happen (db_jobs in unmanaged jobs list?)
-        # db_jobs = list(filter(lambda j: j.is_db
-        #       and not j.is_complete, unmanaged_jobs))
-        # db_jobs2 = list(
-        #     filter(lambda j: j.is_db and not j.is_complete, job_manager_dbs)
-        # )
 
         n_dbs: int = len(
             [
