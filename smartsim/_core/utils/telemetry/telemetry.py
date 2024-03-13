@@ -432,6 +432,14 @@ class TelemetryMonitorArgs:
 
 
 class TelemetryMonitor:
+    """The telemetry monitor is a standalone process managed by SmartSim to perform
+    long-term retrieval of experiment status updates and resource usage
+    metrics. Note that a non-blocking driver script is likely to complete before
+    the SmartSim entities complete. Also, the JobManager performs status updates
+    only as long as the driver is running. This telemetry monitor entrypoint is
+    started automatically when a SmartSim experiment calls the `start` method
+    on resources. The entrypoint runs until it has no resources to monitor."""
+
     def __init__(self, telemetry_monitor_args: TelemetryMonitorArgs):
         self._observer: BaseObserver = Observer()
         self._args = telemetry_monitor_args
