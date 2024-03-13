@@ -441,6 +441,11 @@ class TelemetryMonitor:
     on resources. The entrypoint runs until it has no resources to monitor."""
 
     def __init__(self, telemetry_monitor_args: TelemetryMonitorArgs):
+        """Initialize the telemetry monitor instance
+
+        :param telemetry_monitor_args: configuration for the telemetry monitor
+        :type telemetry_monitor_args: TelemetryMonitorArgs
+        """
         self._observer: BaseObserver = Observer()
         self._args = telemetry_monitor_args
         self._experiment_dir = pathlib.Path(self._args.exp_dir)
@@ -449,10 +454,13 @@ class TelemetryMonitor:
         self._action_handler: t.Optional[ManifestEventHandler] = None
 
     def _can_shutdown(self) -> bool:
-        """Determines if the telemetry monitor can perform an automatic shutdown. An
+        """Determines if the telemetry monitor can perform shutdown. An
         automatic shutdown will occur if there are no active jobs being monitored.
         Managed jobs and databases are considered separately due to the way they
-        are stored in the job manager"""
+        are stored in the job manager
+
+        :return: return True if capable of automatically shutting down
+        :rtype: int"""
         managed_jobs = (
             list(self._action_handler.job_manager.jobs.values())
             if self._action_handler
@@ -461,7 +469,7 @@ class TelemetryMonitor:
         unmanaged_jobs = (
             list(self._action_handler.tracked_jobs) if self._action_handler else []
         )
-
+        # get an individual count of databases for logging
         n_dbs: int = len(
             [
                 job
@@ -469,6 +477,8 @@ class TelemetryMonitor:
                 if isinstance(job, JobEntity) and job.is_db
             ]
         )
+
+        # if we have no jobs currently being monitored we can shutdown
         n_jobs = len(managed_jobs) + len(unmanaged_jobs) - n_dbs
         shutdown_ok = n_jobs + n_dbs == 0
 
@@ -477,26 +487,16 @@ class TelemetryMonitor:
 
     async def monitor(self) -> None:
         """The main monitoring loop. Executes a busy wait and triggers
-        telemetry collectors every <frequency> milliseconds. Continues
-        monitoring until it satisfies automatic shutdown criteria.
-
-        :param observer: (optional) a preconfigured watchdog Observer to inject
-        :type observer: t.Optional[BaseObserver]
-        :param frequency: frequency (in milliseconds) of update loop
-        :type frequency: t.Union[int, float]
-        :param logger: a preconfigured Logger instance
-        :type logger: logging.Logger
-        :param cooldown_duration: number of milliseconds the telemetry monitor should
-                                poll for new jobs before attempting to shutdown
-        :type cooldown_duration: int"""
+        telemetry collectors using frequency from constructor arguments.
+        Continue monitoring until it satisfies automatic shutdown criteria."""
         elapsed: int = 0
         last_ts: int = get_ts_ms()
         shutdown_in_progress = False
 
         assert self._action_handler is not None
 
-        # Event loop runs until the observer shuts down or an automatic shutdown is
-        # started after receiving no events for a period exceeding `cooldown_duration`
+        # Event loop runs until the observer shuts down or
+        # an automatic shutdown is started.
         while self._observer.is_alive() and not shutdown_in_progress:
             duration_ms = 0
             start_ts = get_ts_ms()
@@ -506,7 +506,9 @@ class TelemetryMonitor:
             elapsed += start_ts - last_ts
             last_ts = start_ts
 
+            # check if there are no jobs being monitored
             if self._can_shutdown():
+                # cooldown period begins once there is
                 if elapsed >= self._args.cooldown_ms:
                     shutdown_in_progress = True
                     logger.info("Beginning telemetry manager shutdown")
@@ -534,17 +536,6 @@ class TelemetryMonitor:
         """Setup the monitoring entities and start the timer-based loop that
         will poll for telemetry data
 
-        :param frequency: frequency (in seconds) of update loop
-        :type frequency: t.Union[int, float]
-        :param experiment_dir: the experiement directory to monitor for changes
-        :type experiment_dir: pathlib.Path
-        :param logger: a preconfigured Logger instance
-        :type logger: logging.Logger
-        :param observer: (optional) a preconfigured Observer to inject
-        :type observer: t.Optional[BaseObserver]
-        :param cooldown_duration: number of seconds the telemetry monitor should
-                                poll for new jobs before automatic shutdown
-        :type cooldown_duration: int
         :return: return code for the process
         :rtype: int"""
         logger.info(
@@ -554,7 +545,6 @@ class TelemetryMonitor:
         )
 
         # Convert second-based inputs to milliseconds
-        # cooldown_ms = 1000 * (self._args.cooldown or cfg.CONFIG.telemetry_cooldown)
         frequency_ms = int(self._args.frequency * 1000)
 
         # Create event handlers to trigger when target files are changed
@@ -579,6 +569,7 @@ class TelemetryMonitor:
             )  # type:ignore
             self._observer.start()  # type: ignore
 
+            # kick off the 'infinite loop' of monitoring
             await self.monitor()
             return os.EX_OK
         except Exception as ex:
