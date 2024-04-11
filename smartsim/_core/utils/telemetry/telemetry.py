@@ -30,6 +30,7 @@ import os
 import pathlib
 import threading
 import typing as t
+import zmq
 
 from watchdog.events import (
     FileSystemEvent,
@@ -38,6 +39,7 @@ from watchdog.events import (
 )
 from watchdog.observers import Observer
 from watchdog.observers.api import BaseObserver
+from zmq.auth.thread import ThreadAuthenticator
 
 from smartsim._core.config import CONFIG
 from smartsim._core.control.job import JobEntity, _JobKey
@@ -457,6 +459,20 @@ class TelemetryMonitor:
         self._action_handler: t.Optional[ManifestEventHandler] = None
         """an event listener holding action handlers for manifest on-change events"""
 
+    def register_event_queue(self):
+        context = zmq.Context()
+        self._socket = context.socket(zmq.SUB)
+        self._socket.setsockopt_string(zmq.SUBSCRIBE, "")
+        self._socket.bind("tcp://127.0.0.1:30878")
+
+    def check_event_queue(self):
+        try:
+            msg = self._socket.recv_json(flags=zmq.DONTWAIT)
+            if msg:
+                logger.info("here is your telemetry message:", msg)
+        except zmq.Again:
+            logger.debug("no msg", exc_info=True)
+
     def _can_shutdown(self) -> bool:
         """Determines if the telemetry monitor can perform shutdown. An
         automatic shutdown will occur if there are no active jobs being monitored.
@@ -503,6 +519,8 @@ class TelemetryMonitor:
         # Event loop runs until the observer shuts down or
         # an automatic shutdown is started.
         while self._observer.is_alive() and not shutdown_in_progress:
+            self.check_event_queue()
+
             duration_ms = 0
             start_ts = get_ts_ms()
             await self._action_handler.on_timestep(start_ts)
@@ -553,6 +571,8 @@ class TelemetryMonitor:
         # Convert second-based inputs to milliseconds
         frequency_ms = int(self._args.frequency * 1000)
 
+        self.register_event_queue()
+
         # Create event handlers to trigger when target files are changed
         log_handler = LoggingEventHandler(logger)  # type: ignore
         self._action_handler = ManifestEventHandler(
@@ -586,9 +606,19 @@ class TelemetryMonitor:
 
         return os.EX_SOFTWARE
 
-    def cleanup(self) -> None:
-        """Perform cleanup for all allocated resources"""
+    def _shutdown_event_queue(self):
+        """Perform cleanup of event queue"""
+        if self._socket is not None:
+            self._socket.close()
+
+    def _shutdown_fs_observer(self):
+        """Perform cleanup of file system observer"""
         if self._observer is not None and self._observer.is_alive():
             logger.debug("Cleaning up manifest observer")
             self._observer.stop()  # type: ignore
             self._observer.join()
+
+    def cleanup(self) -> None:
+        """Perform cleanup for all allocated resources"""
+        self._shutdown_fs_observer()
+        self._shutdown_event_queue()

@@ -77,6 +77,7 @@ _SchemaT = t.TypeVar("_SchemaT", bound=t.Union[DragonRequest, DragonResponse])
 
 DRG_LOCK = RLock()
 DRG_CTX = zmq.Context()
+_event_queue = None
 
 
 class DragonLauncher(WLMLauncher):
@@ -464,10 +465,22 @@ class DragonLauncher(WLMLauncher):
         socket: zmq.Socket[t.Any], request: DragonRequest, flags: int = 0
     ) -> DragonResponse:
         client = dragonSockets.as_client(socket)
+        DragonLauncher.publish(
+            DRG_CTX,
+            request
+        )
         with DRG_LOCK:
             logger.debug(f"Sending {type(request).__name__}: {request}")
             client.send(request, flags)
             return client.recv()
+
+    @staticmethod
+    def publish(context: zmq.Context, request: DragonRequest, flags: int = 0) -> None:
+        if _event_queue is None:
+            _event_queue: zmq.Socket[bytes] = context.socket(zmq.PUB)
+            _event_queue.connect("tcp://127.0.0.1:30878")
+        _event_queue.send_json(request.json())
+        ...
 
 
 def _assert_schema_type(obj: object, typ: t.Type[_SchemaT], /) -> _SchemaT:

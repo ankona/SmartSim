@@ -80,7 +80,8 @@ def print_summary(
     cmd: t.List[str], network_interface: str, shard_data: LaunchedShardData
 ) -> None:
     print(
-        textwrap.dedent(f"""\
+        textwrap.dedent(
+            f"""\
             ----------- Running Command ----------
             COMMAND: {' '.join(cmd)}
             IPADDRESS: {shard_data.hostname}
@@ -90,7 +91,8 @@ def print_summary(
 
             --------------- Output ---------------
 
-            """),
+            """
+        ),
         flush=True,
     )
 
@@ -113,28 +115,33 @@ def main(args: argparse.Namespace) -> int:
         *build_bind_args(src_addr, *bind_addrs),
     ]
 
-    # Prevent redirection of stdout and stderr
-    with (
-        open(shard_data.name + ".out", "w", encoding="utf-8")
-        if args.redirect_output
-        else sys.stdout
-    ) as sys.stdout, (
-        open(shard_data.name + ".err", "w", encoding="utf-8")
-        if args.redirect_output
-        else sys.stderr
-    ) as sys.stderr:
-        print_summary(cmd, args.ifname, shard_data)
+    try:
+        # Prevent redirection of stdout and stderr
+        with (
+            open(shard_data.name + ".out", "w", encoding="utf-8")
+            # if args.redirect_output
+            # else sys.stdout
+        ) as sys.stdout, (
+            open(shard_data.name + ".err", "w", encoding="utf-8")
+            # if args.redirect_output
+            # else sys.stderr
+        ) as sys.stderr:
+            print_summary(cmd, args.ifname, shard_data)
 
-        try:
-            process = psutil.Popen(cmd, stdout=PIPE, stderr=STDOUT)
-            DBPID = process.pid
+            try:
+                process = psutil.Popen(cmd, stdout=PIPE, stderr=STDOUT)
+                DBPID = process.pid
 
-            for line in iter(process.stdout.readline, b""):
-                print(line.decode("utf-8").rstrip(), flush=True)
-        except Exception as e:
-            cleanup()
-            raise SSInternalError("Database process starter raised an exception") from e
-        return 0
+                for line in iter(process.stdout.readline, b""):
+                    print(line.decode("utf-8").rstrip(), flush=True)
+            except Exception as e:
+                cleanup()
+                raise SSInternalError(
+                    "Database process starter raised an exception"
+                ) from e
+            return 0
+    except Exception as ex:
+        print(ex)
 
 
 def cleanup() -> None:
