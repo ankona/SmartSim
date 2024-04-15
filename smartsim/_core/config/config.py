@@ -171,7 +171,7 @@ class Config:
 
     @property
     def log_level(self) -> str:
-        return os.environ.get("SMARTSIM_LOG_LEVEL", "info")
+        return os.environ.get("SMARTSIM_LOG_LEVEL", "debug")
 
     @property
     def jm_interval(self) -> int:

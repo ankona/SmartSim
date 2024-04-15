@@ -103,6 +103,7 @@ class DragonLauncher(WLMLauncher):
         self._authenticator: t.Optional[zmq.auth.thread.ThreadAuthenticator] = None
 
         self._set_timeout(self._timeout)
+        self._event_queue = None
 
     @property
     def is_connected(self) -> bool:
@@ -412,6 +413,9 @@ class DragonLauncher(WLMLauncher):
                 if response.error_message is not None:
                     msg += "\nDragon backend reported following error: "
                     msg += response.error_message
+                delim = "\n\n\n"
+                print(f"{delim}actual:{step_id}{delim}")
+                print(f"avail:{response.statuses.keys()}{delim}")
                 raise LauncherError(msg)
 
             status, ret_codes = response.statuses[step_id]
@@ -434,6 +438,10 @@ class DragonLauncher(WLMLauncher):
         if (socket := self._dragon_head_socket) is None:
             raise LauncherError("Launcher is not connected to Dragon")
 
+        try:
+            self.publish(self._context, request)
+        except Exception:
+            logger.error("uh oh", exc_info=True)
         return self.send_req_with_socket(socket, request, flags)
 
     def __str__(self) -> str:
@@ -481,6 +489,31 @@ class DragonLauncher(WLMLauncher):
             logger.debug(f"Sending {type(request).__name__}: {request}")
             client.send(request, flags)
             return client.recv()
+
+    # @staticmethod
+    def publish(
+        self, context: zmq.Context[t.Any], request: DragonRequest, flags: int = 0
+    ) -> None:
+
+        if_config = get_best_interface_and_address()
+        interface = if_config.interface
+        address = if_config.address
+
+        if self._event_queue is None:
+            _event_queue: zmq.Socket[bytes] = context.socket(zmq.PUB)
+            addr = "tcp://10.150.0.3:6564"
+            logger.info(f"Connecting publisher to: {addr}, actual: {address}")
+
+        _event_queue.connect(addr)
+        # logger.info("*** NEW *** _event_queue is connected...")
+
+        logger.info("*** NEW *** _event_queue is sending...")
+        _event_queue.send_json(
+            request.json(
+                include={"name", "exe", "exe_args", "step_id", "step_ids", "address"}
+            ),
+            flags=flags,
+        )
 
 
 def _assert_schema_type(obj: object, typ: t.Type[_SchemaT], /) -> _SchemaT:

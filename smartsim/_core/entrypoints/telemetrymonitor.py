@@ -26,12 +26,16 @@
 import argparse
 import asyncio
 import logging
+import threading as mt
 import os
 import os.path
 import pathlib
 import signal
 import sys
+import time
+import datetime
 import typing as t
+import zmq
 from types import FrameType
 
 import smartsim._core.config as cfg
@@ -41,11 +45,72 @@ from smartsim._core.utils.telemetry.telemetry import (
 )
 from smartsim.log import DEFAULT_LOG_FORMAT, HostnameFilter
 
+
+from smartsim._core.utils.network import get_best_interface_and_address, find_free_port
+
 """Telemetry Monitor entrypoint
 Starts a long-running, standalone process that hosts a `TelemetryMonitor`"""
 
 
 logger = logging.getLogger("TelemetryMonitor")
+
+
+def subscription_handler(xpub_addr: str):
+    context = zmq.Context()
+
+    # xpub_port = 6566
+    # xpub_addr = f"tcp://10.150.0.3:{xpub_port}"
+
+    subscriber = context.socket(zmq.SUB)
+    subscriber.connect(xpub_addr)
+
+    subscriber.setsockopt_string(zmq.SUBSCRIBE, "TELEMETRY")
+
+    msg_num = 0
+
+    while True:
+        msg = subscriber.recv_string()
+        msg_num += 1
+        print(f"{msg_num:10}: {msg[:30]}...")
+
+
+def expose_queue_proxy():
+    context = zmq.Context()
+
+    if_config = get_best_interface_and_address()
+    interface = if_config.interface
+    address = if_config.address
+
+    xsub_port = find_free_port(6565)
+    xsub_addr = f"tcp://{address}:{xsub_port}"
+
+    _frontend_queue = context.socket(zmq.XSUB)
+    print(f"Binding xsub to: {xsub_addr}")
+    _frontend_queue.bind(xsub_addr)
+
+    xpub_port = find_free_port(xsub_port + 1)
+    xpub_addr = f"tcp://{address}:{xpub_port}"
+
+    _backend_queue = context.socket(zmq.XPUB)
+    print(f"Binding xpub to: {xpub_addr}")
+    _backend_queue.bind(xpub_addr)
+
+    subscriber_thread = mt.Thread(target=subscription_handler, args=(xpub_addr,))
+    subscriber_thread.start()
+
+    zmq.proxy(_frontend_queue, _backend_queue, None)
+
+    # _poller = zmq.Poller()
+    # _poller.register(_frontend_queue, zmq.POLLIN)
+    # _poller.register(_backend_queue, zmq.POLLIN)
+
+    # while True:
+    #     time.sleep(1)
+    #     print(
+    #         f"polling queues... {datetime.datetime.timestamp(datetime.datetime.now()) }"
+    #     )
+
+    #     _poller.poll()
 
 
 def register_signal_handlers(
@@ -89,7 +154,7 @@ def get_parser() -> argparse.ArgumentParser:
         "-loglevel",
         type=int,
         help="Logging level",
-        default=logging.INFO,
+        default=logging.DEBUG,
     )
     return arg_parser
 
@@ -163,6 +228,9 @@ if __name__ == "__main__":
     register_signal_handlers(cleanup_telemetry_monitor)
 
     try:
+        proxy_thread = mt.Thread(target=expose_queue_proxy)
+        proxy_thread.start()
+
         asyncio.run(telemetry_monitor.run())
         sys.exit(0)
     except Exception:

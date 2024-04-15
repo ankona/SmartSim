@@ -67,6 +67,8 @@ from smartsim.settings import (
 
 logger = get_logger(__name__)
 
+os.environ["SLURM_JOB_ID"] = "465508"
+
 # pylint: disable=redefined-outer-name,invalid-name,global-statement
 
 # Globals, yes, but its a testing file

@@ -31,6 +31,7 @@ import pathlib
 import threading
 import typing as t
 
+import zmq
 from watchdog.events import (
     FileSystemEvent,
     LoggingEventHandler,
@@ -56,6 +57,8 @@ from smartsim._core.utils.telemetry.manifest import Run, RuntimeManifest
 from smartsim._core.utils.telemetry.util import map_return_code, write_event
 from smartsim.error.errors import SmartSimError
 from smartsim.status import TERMINAL_STATUSES
+from smartsim._core.utils.network import get_best_interface_and_address, find_free_port
+
 
 logger = logging.getLogger("TelemetryMonitor")
 
@@ -323,6 +326,13 @@ class ManifestEventHandler(PatternMatchingEventHandler):
                     completed_entity = names[step_name]
                     await self._to_completed(timestamp, completed_entity, step_info)
 
+            if not step_updates:
+                # assume we have reloaded a dead experiment and cannot get updates.
+                # currently, required when dragon launchers are terminated.
+                logger.warning(f"Removing tasks that cannot retrieve updates: {names}")
+                for job in m_jobs:
+                    self._tracked_jobs.pop(job.key)
+
     async def shutdown(self) -> None:
         """Release all resources owned by the `ManifestEventHandler`"""
         logger.debug(f"{type(self).__name__} shutting down...")
@@ -438,7 +448,7 @@ class TelemetryMonitor:
     started automatically when a SmartSim experiment calls the `start` method
     on resources. The entrypoint runs until it has no resources to monitor."""
 
-    def __init__(self, telemetry_monitor_args: TelemetryMonitorArgs):
+    def __init__(self, telemetry_monitor_args: TelemetryMonitorArgs) -> None:
         """Initialize the telemetry monitor instance
 
         :param telemetry_monitor_args: configuration for the telemetry monitor
@@ -456,6 +466,79 @@ class TelemetryMonitor:
         """path to the runtime manifest file"""
         self._action_handler: t.Optional[ManifestEventHandler] = None
         """an event listener holding action handlers for manifest on-change events"""
+
+        self._frontend_queue: t.Optional[zmq.Socket[t.Any]] = None
+        self._backend_queue: t.Optional[zmq.Socket[t.Any]] = None
+        self._sub: t.Optional[zmq.Socket[t.Any]] = None
+
+    def register_event_queue(self) -> None:
+        context = zmq.Context()
+        self._frontend_queue = context.socket(zmq.XSUB)
+        self._backend_queue = context.socket(zmq.XPUB)
+        # self._sub = context.socket(zmq.SUB)
+
+        if_config = get_best_interface_and_address()
+        interface = if_config.interface
+        address = if_config.address
+        port = find_free_port(6565)
+        if port == 6565:
+            logger.info("we can use 6565")
+        else:
+            logger.info("6565 can't be bound to")
+
+        xsub_port = 6564
+        xsub_addr = f"tcp://10.150.0.3:{xsub_port}"
+
+        xpub_port = 6565
+        xpub_addr = f"tcp://10.150.0.3:{xpub_port}"
+
+        logger.info(f"Binding xsub to: {xsub_addr}, actual: {address}")
+        self._frontend_queue.bind(xsub_addr)
+
+        logger.info(f"Binding xpub to: {xpub_addr}, actual: {address}")
+        self._backend_queue.bind(xpub_addr)
+
+        # zmq.proxy(self._frontend_queue, self._backend_queue)
+        self._poller = zmq.Poller()
+        self._poller.register(self._frontend_queue, zmq.POLLIN)
+        self._poller.register(self._backend_queue, zmq.POLLIN)
+        # self._poller.register(self._sub, zmq.POLLIN)
+
+        # self._sub.connect(xpub_addr)
+        # self._sub.setsockopt(zmq.SUBSCRIBE, b"")
+
+        logger.info("*** NEW *** event socket is bound...")
+
+    # def check_event_queue(self) -> None:
+    #     logger.debug("Checking telemetry event queue")
+    #     try:
+    #         if self._frontend_queue is None:
+    #             self.register_event_queue()
+    #             # logger.debug("Null socket cannot be used to check event queue")
+    #             # return
+
+    #         socks = dict(self._poller.poll())
+    #         if (
+    #             self._frontend_queue in socks
+    #             and socks[self._frontend_queue] == zmq.POLLIN
+    #         ):
+    #             msg = self._frontend_queue.recv_json()
+    #             self._backend_queue.send_json(msg)
+
+    #         msg = ""
+
+    #         if (
+    #             self._backend_queue in socks
+    #             and socks[self._backend_queue] == zmq.POLLIN
+    #         ):
+    #             msg = self._backend_queue.recv_json()
+
+    #         if msg:
+    #             logger.info(f"Here is your telemetry message: {msg}")
+    #         else:
+    #             logger.info("No telemetry message")
+    #     except Exception:
+    #         logger.debug("no msg", exc_info=True)
 
     def _can_shutdown(self) -> bool:
         """Determines if the telemetry monitor can perform shutdown. An
@@ -503,6 +586,8 @@ class TelemetryMonitor:
         # Event loop runs until the observer shuts down or
         # an automatic shutdown is started.
         while self._observer.is_alive() and not shutdown_in_progress:
+            self.check_event_queue()
+
             duration_ms = 0
             start_ts = get_ts_ms()
             await self._action_handler.on_timestep(start_ts)
@@ -586,9 +671,19 @@ class TelemetryMonitor:
 
         return os.EX_SOFTWARE
 
-    def cleanup(self) -> None:
-        """Perform cleanup for all allocated resources"""
+    def _shutdown_event_queue(self) -> None:
+        """Perform cleanup of event queue"""
+        if self._frontend_queue is not None:
+            self._frontend_queue.close()
+
+    def _shutdown_fs_observer(self) -> None:
+        """Perform cleanup of file system observer"""
         if self._observer is not None and self._observer.is_alive():
             logger.debug("Cleaning up manifest observer")
             self._observer.stop()  # type: ignore
             self._observer.join()
+
+    def cleanup(self) -> None:
+        """Perform cleanup for all allocated resources"""
+        self._shutdown_fs_observer()
+        # self._shutdown_event_queue()
