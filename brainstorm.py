@@ -78,7 +78,7 @@ class DictFeatureStore(FeatureStore):
         return self._get(key)
 
     def __setitem__(self, key: t.Any, item: t.Any) -> None:
-        self._set(key)
+        self._set(key, item)
 
     def _get(self, key: bytes) -> bytes:
         return self._storage[key]
@@ -235,6 +235,7 @@ class FileCommChannel(CommChannel):
 
     def send(self, value: bytes) -> None:
         msg = f"Sending {value.decode('utf-8')} through file channel"
+        print(msg)
         self._path.write_text(msg)
 
     @classmethod
@@ -579,14 +580,13 @@ class WorkerManager(ServiceHost):
         msg: str = self.upstream_queue.get()
 
         if request := InferenceRequest.from_msg(msg):
-            existing_worker: t.Optional[MachineLearningWorker] = None
+            worker = self._workers.get(request.model.backend, None)
             if request.model.backend == "PyTorch":
-                existing_worker: t.Optional[MachineLearningWorker] = self._workers.get(
-                    request.model._key, None
-                )
-                model = self._feature_store[request.model._key]
+                print(f"Request received for {request.model.backend} backend")
+                model = self._feature_store[request.model._key.key]
 
                 if not model:
+                    print("No model found in feature_store")
                     # START hack! this really needs to come from message but for now, i'll use demo model
                     model_bytes = request.model._key.retrieve()
                     # with pathlib.Path("./demo-model.pt") as model_file:
@@ -594,27 +594,35 @@ class WorkerManager(ServiceHost):
                     # END hack!
 
                     model = MachineLearningModel(
-                        "PyTorch",
+                        request.model.backend,
                         request.model._key,
                     )
+                    self._feature_store[request.model._key.key] = model
 
                     # note: if the req is direct inference, request.model could be
                     # populated and need to be put _INTO_ the feature store...
 
-            if not existing_worker:
+            if not worker:
+                print("Adding new TorchWorker to managed workers")
                 downstream_queue = mp.Queue()
-                self.add_worker(TorchWorker(model, downstream_queue), downstream_queue)
-                return
+                worker = TorchWorker(model, downstream_queue)
+                self.add_worker(worker, downstream_queue)
 
         # perform the inference pipeline with a worker
-        if worker := self._workers.get(request.model.backend, None):
-            value = worker.infer(request.value)
+        worker, _ = self._workers.get(request.model.backend, None)
+        if worker:
+            print(f"Retrieved {request.model.backend} worker from managed workers")
+            value: torch.Tensor = worker.infer(request.value)
+            value_as_bytes = str(value).encode("utf-8")
 
-            callback_channel = self._deserialize_channel_descriptor(value)
-            callback_channel.send(value)
+            # self._deserialize_channel_descriptor(request.callback)
+            callback_channel = request.callback
+            callback_channel.send(value_as_bytes)
+        else:
+            print(f"Cannot retrieve {request.model.backend} worker")
 
     def _can_shutdown(self) -> bool:
-        return True
+        return bool(self._workers)
 
     @property
     def upstream_queue(self) -> t.Optional[mp.Queue]:
@@ -628,7 +636,7 @@ class WorkerManager(ServiceHost):
         self._workers[worker.model.backend] = (worker, work_queue)
 
     def _deserialize_channel_descriptor(self, value: bytes) -> CommChannel:
-        channel = FileCommChannel.find(value)
+        channel = FileCommChannel.find(value)  # todo: inject CommChannels based on messages...
         # channel.send(value)
         return channel
 
@@ -669,13 +677,8 @@ class MachineLearningModelWorker(ServiceHost):
         torch.save(result, buffer)
         # callback.send_bytes(buffer.read())
 
-    def infer(self, input: bytes) -> None:
-        model_bytes = self._model._key.retrieve()
-        torch_model: torch.Module = self._hydrate_model(model_bytes)
-        input = torch.Tensor([1, 2])
-
-        result = torch_model(input)
-        self.publish_result(result)
+    @abstractmethod
+    def infer(self, input: bytes) -> t.Any: ...
 
     def _can_shutdown(self) -> bool:
         return True
@@ -706,6 +709,16 @@ class TorchWorker(MachineLearningModelWorker):
         model = torch.nn.Sequential(torch.nn.Linear(2, 1))
         return model
 
+    def infer(self, input: bytes) -> torch.Tensor:
+        model_bytes = self._model._key.retrieve()
+        torch_model: torch.Module = self._hydrate_model(model_bytes)
+        input = torch.Tensor([1, 2])
+
+        # result = torch_model(input)
+        result = torch.Tensor(999)
+        self.publish_result(result)
+        return result
+
 
 def mock_work(worker_manager_queue: mp.Queue) -> None:
     while True:
@@ -714,13 +727,18 @@ def mock_work(worker_manager_queue: mp.Queue) -> None:
         # 2. for demo, only one downstream but we'd normally have to filter
         #       msg content and send to the correct downstream (worker) queue
         ts = time.time_ns()
-        mock_channel = f"/lus/bnchlu1/mcbridch/code/ss/brainstorm-{ts}.txt"
-        mock_model = f"/lus/bnchlu1/mcbridch/code/ss/brainstorm.pt"
-        pathlib.Path(mock_model).touch()
+        test_dir = "/lus/bnchlu1/mcbridch/code/ss/tests/test_output/brainstorm"
+        test_path = pathlib.Path(test_dir)
 
-        worker_manager_queue.put(
-            f"PyTorch:{mock_model}:MockInputToReplace:{mock_channel}".encode("utf-8")
-        )
+        mock_channel = test_path / f"brainstorm-{ts}.txt"
+        mock_model = test_path / "brainstorm.pt"
+
+        test_path.mkdir(parents=True, exist_ok=True)
+        mock_channel.touch()
+        mock_model.touch()
+
+        msg = f"PyTorch:{mock_model}:MockInputToReplace:{mock_channel}"
+        worker_manager_queue.put(msg.encode("utf-8"))
 
 
 if __name__ == "__main__":
@@ -732,7 +750,7 @@ if __name__ == "__main__":
 
     dict_fs = DictFeatureStore()
 
-    worker_manager = WorkerManager(dict_fs)  # as_service=True, cooldown=10)
+    worker_manager = WorkerManager(dict_fs, as_service=True, cooldown=10)
     # configure what the manager listens to
     worker_manager.upstream_queue = upstream_queue
     # # and configure a worker ... moving...
