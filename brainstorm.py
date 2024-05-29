@@ -2,6 +2,7 @@ from collections import defaultdict
 import enum
 from functools import singledispatchmethod
 from inspect import isfunction
+from re import A
 import typing as t
 import pathlib
 from abc import ABC, abstractmethod
@@ -217,6 +218,8 @@ class TransformAction(str, enum.Enum):
     TRANSPOSE = enum.auto()
 
 
+Transformer = t.Union[TransformAction, t.Callable[..., t.Any]]
+
 class CommChannel(ABC):
 
     @abstractmethod
@@ -349,40 +352,316 @@ class TorchResourceTransform:
 #     ...
 
 
+class CoreMachineLearningWorker:
+    """Basic functionality of ML worker that is shared across all worker types"""
+    def fetch_model(self, model: ResourceKey) -> MachineLearningModel:
+        """Given a ResourceKey, identify the physical location and model metadata"""
+        # per Matt - just return bytes
+        ...
+
+    def fetch_input(self, inputs: t.Collection[ResourceKey]) -> t.Collection[Datum]:
+        """Given a collection of ResourceKeys, identify the physical location and input metadata"""
+        ...
+
+    def batch_requests(
+        self, data: t.Collection[Datum], batch_size: int
+    ) -> t.Optional[t.Collection[Datum]]:
+        """Create a batch of requests. Return the batch when batch_size datum have been
+        collected or a configured batch duration has elapsed.
+
+        Returns `None` if batch size has not been reached and timeout not exceeded."""
+        ...
+
+    def place_output(
+        self,
+        data: t.Optional[t.Collection[Datum]],
+        # need to know how to get back to original sub-batch inputs so they can be accurately placed, datum might need to include this.
+    ) -> t.Optional[t.Collection[ResourceKey]]:
+        """Given a collection of data, make it available as a shared resource in the
+        feature store"""
+        ...
+
+    # @staticmethod
+    # def backend() -> str: ...
+
+
 class MachineLearningWorker(t.Protocol):
-    # def deserialize(self, data_blob: bytes):
-    #     """Given a collection of data serialized to bytes, convert the bytes
-    #     to a proper representation used by the ML backend"""
-    #     ...
+    def deserialize(self, data_blob: bytes):
+        """Given a collection of data serialized to bytes, convert the bytes
+        to a proper representation used by the ML backend"""
+        ...
 
     # def fetch_model(self, model: ResourceKey) -> MachineLearningModel:
     #     """Given a ResourceKey, identify the physical location and model metadata"""
     #     # per Matt - just return bytes
     #     ...
 
-    # def load_model(self, model: MachineLearningModel):
-    #     """Given a loaded MachineLearningModel, ensure it is loaded into device memory"""
-    #     # invoke separate API functions to put the model on GPU/accelerator (if exists)
-    #     ...
+    def load_model(
+        self, model: MachineLearningModel
+    ):  # MLMLocator? something that doesn't say "I am actually the model"
+        """Given a loaded MachineLearningModel, ensure it is loaded into device memory"""
+        # invoke separate API functions to put the model on GPU/accelerator (if exists)
+        ...
 
     # def fetch_input(self, inputs: t.Collection[ResourceKey]) -> t.Collection[Datum]:
     #     """Given a collection of ResourceKeys, identify the physical location and input metadata"""
     #     ...
 
-    # def transform_input(
-    #     self,
-    #     data: t.Collection[Datum],
-    #     xform: TransformAction,
-    #     inplace: bool = False,
-    # ) -> t.Collection[Datum]:
-    #     """Given a collection of data, perform a transformation on the data"""
+    def transform_input(
+        self,
+        data: t.Collection[Datum],
+        xform: TransformAction,
+        # inplace: bool = False,
+    ) -> t.Collection[Datum]:
+        """Given a collection of data, perform a transformation on the data"""
 
-    def infer(self, value: bytes) -> None: ...
+    # def batch_requests(self, data: t.Collection[Datum], batch_size: int) -> t.Optional[t.Collection[Datum]]:
+    #     """Create a batch of requests. Return the batch when batch_size datum have been
+    #     collected or a configured batch duration has elapsed.
+
+    #     Returns `None` if batch size has not been reached and timeout not exceeded."""
+
+    def execute(self, model: MachineLearningModel, data: t.Collection[Datum]) -> None:
+        """Execute an ML model on the given inputs"""
+
+    def transform_output(
+        self,
+        data: t.Collection[
+            Datum
+        ],  # TODO: ask Al about assumption that "if i put in tensors, i will get out tensors. my generic probably fails here."
+        xform: t.Union[
+            TransformAction, t.Callable[[t.Collection[Datum]], t.Collection[Datum]]
+        ],
+        inplace: bool = False,
+    ) -> t.Collection[Datum]:
+        """Given a collection of data, perform a transformation on the data"""
+        # TODO: determine if a single `transform_data` method can supply base feature (e.g.
+        # pre-built transforms + option of sending transform callable)? No... this explicit
+        # way gives the pipeline a definite pre and post call that are easy to understand
+
+    # def place_output(
+    #         self,
+    #         data: t.Optional[t.Collection[Datum]],
+    #         # need to know how to get back to original sub-batch inputs so they can be accurately placed, datum might need to include this.
+    # ) -> t.Optional[t.Collection[ResourceKey]]:
+    #     """Given a collection of data, make it available as a shared resource in the
+    #     feature store"""
+
+    # def serialize(self, data: t.Collection[Datum]) -> bytes:
+    #     """Serialize the input data to bytes for transfer to client application"""
 
     @staticmethod
     def backend() -> str: ...
 
 
+class MachineLearningWorkerBase(CoreMachineLearningWorker, MachineLearningWorker, ABC):
+    @abstractmethod
+    @staticmethod
+    def deserialize(data_blob: bytes):
+        """Given a collection of data serialized to bytes, convert the bytes
+        to a proper representation used by the ML backend"""
+        ...
+
+    @abstractmethod
+    @staticmethod
+    def load_model(
+        self, model: MachineLearningModel
+    ):  # MLMLocator? something that doesn't say "I am actually the model"
+        """Given a loaded MachineLearningModel, ensure it is loaded into device memory"""
+        # invoke separate API functions to put the model on GPU/accelerator (if exists)
+        ...
+
+    @abstractmethod
+    @staticmethod
+    def transform_input(
+        self,
+        data: t.Collection[Datum],
+        xform: TransformAction,
+        # inplace: bool = False,
+    ) -> t.Collection[Datum]:
+        """Given a collection of data, perform a transformation on the data"""
+
+    @abstractmethod
+    @staticmethod
+    def execute(self, model: MachineLearningModel, data: t.Collection[Datum]) -> None:
+        """Execute an ML model on the given inputs"""
+
+    @abstractmethod
+    @staticmethod
+    def transform_output(
+        self,
+        data: t.Collection[
+            Datum
+        ],  # TODO: ask Al about assumption that "if i put in tensors, i will get out tensors. my generic probably fails here."
+        xform: t.Union[
+            TransformAction, t.Callable[[t.Collection[Datum]], t.Collection[Datum]]
+        ],
+        inplace: bool = False,
+    ) -> t.Collection[Datum]:
+        """Given a collection of data, perform a transformation on the data"""
+        # TODO: determine if a single `transform_data` method can supply base feature (e.g.
+        # pre-built transforms + option of sending transform callable)? No... this explicit
+        # way gives the pipeline a definite pre and post call that are easy to understand
+
+    @abstractmethod
+    @staticmethod
+    def backend() -> str: ...
+
+
+class CustomTorchWorker(MachineLearningWorkerBase):
+    @staticmethod
+    def deserialize(data_blob: bytes):
+        """Given a collection of data serialized to bytes, convert the bytes
+        to a proper representation used by the ML backend"""
+        ...
+
+    @staticmethod
+    def load_model(
+        self, model: MachineLearningModel
+    ):  # MLMLocator? something that doesn't say "I am actually the model"
+        """Given a loaded MachineLearningModel, ensure it is loaded into device memory"""
+        # invoke separate API functions to put the model on GPU/accelerator (if exists)
+        ...
+
+    @staticmethod
+    def transform_input(
+        self,
+        data: t.Collection[Datum],
+        xform: TransformAction,
+        # inplace: bool = False,
+    ) -> t.Collection[Datum]:
+        """Given a collection of data, perform a transformation on the data"""
+
+    @staticmethod
+    def execute(self, model: MachineLearningModel, data: t.Collection[Datum]) -> None:
+        """Execute an ML model on the given inputs"""
+
+    @staticmethod
+    def transform_output(
+        self,
+        data: t.Collection[
+            Datum
+        ],  # TODO: ask Al about assumption that "if i put in tensors, i will get out tensors. my generic probably fails here."
+        xform: t.Union[
+            TransformAction, t.Callable[[t.Collection[Datum]], t.Collection[Datum]]
+        ],
+        inplace: bool = False,
+    ) -> t.Collection[Datum]:
+        """Given a collection of data, perform a transformation on the data"""
+        # TODO: determine if a single `transform_data` method can supply base feature (e.g.
+        # pre-built transforms + option of sending transform callable)? No... this explicit
+        # way gives the pipeline a definite pre and post call that are easy to understand
+
+
+
+# class ResourceRetriever(t.Protocol):
+#     def retrieve(self, key: ResourceKey) -> bytes:
+#         ...
+
+# class BatchBuilder(t.Protocol):
+#     def append(self, data: t.Any) -> None:
+#         """Add data to the available data for batch creation"""
+
+#     def batch(self) -> t.Optional[t.Any]:
+#         """Return a populated batch if enough data exists, otherwise None"""
+#         ...
+
+# class Serializer(t.Protocol):
+#     def serialize(self, data: t.Any) -> bytes:
+#         """Given input data, convert to bytes"""
+#         ...
+    
+#     def deserialize(self, data: bytes) -> t.Any:
+#         """Given serialized data, return to original data structure"""
+#         ...
+
+
+# class ModelLoader(t.Protocol):
+#     def load(self, model: bytes) -> t.Any:
+#         """Given a model as raw bytes, load the model"""
+
+
+# class ModelRunner(t.Protocol):
+#     def execute(self, model: t.Any, data: t.Any) -> t.Any:
+#         """Given a model and input data, execute the model with the input data"""
+#         ...
+
+# class Worker:
+#     @property
+#     def serializer(self, value: Serializer) -> None:
+#         self._serializer = value
+    
+#     @property
+#     def loader(self, value: ModelLoader) -> None:
+#         self._loader = value
+    
+#     @property
+#     def input_transformer(self, value: Transformer) -> None:
+#         self._input_xform = value
+    
+#     @property
+#     def output_transformer(self, value: Transformer) -> None:
+#         self._input_xform = value
+
+#     @property
+#     def model_runner(self, value: ModelRunner) -> None:
+#         self._runner = value
+
+
+class chris_thing:
+    def transform():
+
+        ...
+
+    def execute():
+        ...
+
+
+
+worker = Worker()
+worker.serializer = alyssa.Serializer()
+worker.loader = smartsim.TorchLoader()
+worker.executer = smartsim.TorchRunner()
+
+
+
+# 3 options
+# - driver code
+smartsim.set_mli_worker(worker)
+
+# - config
+yaml:
+ - serializer: alyssa.Serializer
+ - ..
+
+# env
+set SMARTSIM_MLI_SERIALIZER=smartsim.mli.alyssa.serializer
+
+
+# cmd line
+python worker.py -workerclass=customercode.worker
+
+
+
+
+
+
+
+# loader = smartsim.TorchLoader()
+# worker = CustomTorchWorker(x, y, model_loader)
+# mli = smartsim.mli.configure(worker=worker, loader=loader)
+# mli = smartsim.mli.configure(worker=customer.CustomTorchWorker, loader=smartsim.TorchLoader)
+# _or_ via configuration
+# foo.yaml
+# worker:
+#  - type: chris.foo.torchworker
+#  - model_loader: smartsim.mli.TorchLoader
+# _or_ via env
+# set SMARTSIM_MLI_MODEL_LOADER=smartsim.TorchLoader (default)
+# set SMARTSIM_MLI_TORCH_WORKER=customer.CustomTorchWorker
+
+
+# class TorchWorker(CoreMachineLearningWorker, MachineLearningWorker):
 class TorchWorker(MachineLearningWorker):
     def __init__(self, work_queue: mp.Queue) -> None:
         self._work_queue = work_queue
@@ -636,7 +915,9 @@ class WorkerManager(ServiceHost):
         self._workers[worker.model.backend] = (worker, work_queue)
 
     def _deserialize_channel_descriptor(self, value: bytes) -> CommChannel:
-        channel = FileCommChannel.find(value)  # todo: inject CommChannels based on messages...
+        channel = FileCommChannel.find(
+            value
+        )  # todo: inject CommChannels based on messages...
         # channel.send(value)
         return channel
 
@@ -741,6 +1022,19 @@ def mock_work(worker_manager_queue: mp.Queue) -> None:
         worker_manager_queue.put(msg.encode("utf-8"))
 
 
+class ProcessingContext:
+    def __init__(self) -> None:
+        deserialize_out: t.Any
+        model: t.Any
+        inputs: t.List[t.Any]
+        transformed_inputs: t.List[t.Any]
+        batches: t.Any  # : ??? <--- how does the next stage know when a batch is new)
+        results: t.List[t.Any]
+        transformed_results: t.List[t.Any]
+        persisted_keys: t.List[t.Any]
+        serialized_results: t.List[t.Any]
+
+
 if __name__ == "__main__":
 
     upstream_queue = mp.Queue()  # the incoming messages from application
@@ -767,3 +1061,12 @@ if __name__ == "__main__":
     process.join()
 
     msg_pump.kill()
+
+
+# input
+# Aa
+
+# worker.fetch_model
+# worker.load_model()
+
+# (input_queue, worker.deserialize)
