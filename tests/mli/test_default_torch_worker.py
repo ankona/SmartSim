@@ -1,10 +1,11 @@
 import io
 import pathlib
+import pickle
 import pytest
 import torch
 import typing as t
 
-from smartsim import brainstorm2 as mli
+from smartsim import workermanager as mli
 from smartsim._core.utils import installed_redisai_backends
 
 # The tests in this file belong to the group_a group
@@ -35,16 +36,23 @@ def test_backend() -> None:
 
 
 def test_deserialize() -> None:
-    """Verify that tensors are properly deserialized"""
+    """Verify that serialized requests are properly deserialized to
+    and converted to the internal representation used by ML workers"""
     worker = mli.DefaultTorchWorker
 
-    tensor = torch.randn(42)
+    # tensor = torch.randn(42)
     buffer = io.BytesIO()
-    torch.save(tensor, buffer)
+    # torch.save(tensor, buffer)
 
-    deserialized: torch.Tensor = worker.deserialize(buffer.getvalue())
+    exp_backend = "TestBackend"
+    exp_value = b"test-value"
+    msg = mli.InferenceRequest(exp_backend, value=exp_value)
+    pickle.dump(msg, buffer)
 
-    assert tensor.equal(deserialized)
+    deserialized: mli.InferenceRequest = worker.deserialize(buffer.getvalue())
+
+    assert deserialized.value == exp_value
+    assert deserialized.backend == exp_backend
 
 
 def test_load_model_from_disk(persist_model_file: pathlib.Path) -> None:
