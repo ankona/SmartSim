@@ -54,9 +54,11 @@ def test_fetch_model_disk(persist_model_file: pathlib.Path) -> None:
     """Verify that the ML worker successfully retrieves a model
     when given a valid (file system) key"""
     worker = mli.MachineLearningWorkerCore
-    key = mli.FileSystemKey(persist_model_file)
+    key = str(persist_model_file)
+    feature_store = mli.FileSystemFeatureStore()
+    feature_store[str(persist_model_file)] = persist_model_file.read_bytes()
 
-    raw_bytes = worker.fetch_model(key)
+    raw_bytes = worker.fetch_model(key, feature_store)
     assert raw_bytes
     assert raw_bytes == persist_model_file.read_bytes()
 
@@ -65,13 +67,13 @@ def test_fetch_model_disk_missing() -> None:
     """Verify that the ML worker fails to retrieves a model
     when given an invalid (file system) key"""
     worker = mli.MachineLearningWorkerCore
+    feature_store = mli.FileSystemFeatureStore()
 
     bad_key_path = pathlib.Path("/path/that/doesnt/exist")
-    key = mli.FileSystemKey(bad_key_path)
 
     # todo: consider that raising this exception shows impl. replace...
     with pytest.raises(sse.SmartSimError) as ex:
-        worker.fetch_model(key)
+        worker.fetch_model(str(bad_key_path), feature_store)
 
     # ensure the error message includes key-identifying information
     assert str(bad_key_path) in ex.value.args[0]
@@ -82,19 +84,14 @@ def test_fetch_model_feature_store(persist_model_file: pathlib.Path) -> None:
     when given a valid (file system) key"""
     worker = mli.MachineLearningWorkerCore
 
-    model_name = "test-model"
-    feature_store = mli.DictFeatureStore()
-
-    # todo: consider if this abstraction as reversed. should the FS instead give
-    # out keys instead of giving an FS to the key?
-
     # create a key to retrieve from the feature store
-    key = mli.FeatureStoreKey(model_name, feature_store)
-    # put model bytes into the feature store
-    model_bytes = persist_model_file.read_bytes()
-    key.put(model_bytes)
+    key = "test-model"
 
-    raw_bytes = worker.fetch_model(key)
+    # put model bytes into the feature store
+    feature_store = mli.MemoryFeatureStore()
+    feature_store[key] = persist_model_file.read_bytes()
+
+    raw_bytes = worker.fetch_model(key, feature_store)
     assert raw_bytes
     assert raw_bytes == persist_model_file.read_bytes()
 
@@ -105,12 +102,11 @@ def test_fetch_model_feature_store_missing() -> None:
     worker = mli.MachineLearningWorkerCore
 
     bad_key = "some-key"
-    feature_store = mli.DictFeatureStore()
-    key = mli.FeatureStoreKey(bad_key, feature_store)
+    feature_store = mli.MemoryFeatureStore()
 
     # todo: consider that raising this exception shows impl. replace...
     with pytest.raises(sse.SmartSimError) as ex:
-        worker.fetch_model(key)
+        worker.fetch_model(bad_key, feature_store)
 
     # ensure the error message includes key-identifying information
     assert bad_key in ex.value.args[0]
@@ -121,10 +117,11 @@ def test_fetch_model_memory(persist_model_file: pathlib.Path) -> None:
     when given a valid (file system) key"""
     worker = mli.MachineLearningWorkerCore
 
-    model_name = "test-model"
-    key = mli.MemoryKey(model_name, persist_model_file.read_bytes())
+    key = "test-model"
+    feature_store = mli.MemoryFeatureStore()
+    feature_store[key] = persist_model_file.read_bytes()
 
-    raw_bytes = worker.fetch_model(key)
+    raw_bytes = worker.fetch_model(key, feature_store)
     assert raw_bytes
     assert raw_bytes == persist_model_file.read_bytes()
 
@@ -133,7 +130,7 @@ def test_fetch_input_disk(persist_tensor_file: pathlib.Path) -> None:
     """Verify that the ML worker successfully retrieves a tensor/input
     when given a valid (file system) key"""
     worker = mli.MachineLearningWorkerCore
-    feature_store = mli.DictFeatureStore()
+    feature_store = mli.MemoryFeatureStore()
     feature_store[str(persist_tensor_file)] = persist_tensor_file.read_bytes()
 
     raw_bytes = worker.fetch_inputs([str(persist_tensor_file)], feature_store)
@@ -146,7 +143,7 @@ def test_fetch_input_disk_missing() -> None:
     worker = mli.MachineLearningWorkerCore
 
     bad_key_path = pathlib.Path("/path/that/doesnt/exist")
-    feature_store = mli.DictFeatureStore()
+    feature_store = mli.MemoryFeatureStore()
 
     # todo: consider that raising this exception shows impl. replace...
     with pytest.raises(sse.SmartSimError) as ex:
@@ -162,7 +159,7 @@ def test_fetch_input_feature_store(persist_tensor_file: pathlib.Path) -> None:
     worker = mli.MachineLearningWorkerCore
 
     tensor_name = "test-tensor"
-    feature_store = mli.DictFeatureStore()
+    feature_store = mli.MemoryFeatureStore()
 
     # todo: consider if this abstraction as reversed. should the FS instead give
     # out keys instead of giving an FS to the key?
@@ -181,7 +178,7 @@ def test_fetch_multi_input_feature_store(persist_tensor_file: pathlib.Path) -> N
     worker = mli.MachineLearningWorkerCore
 
     tensor_name = "test-tensor"
-    feature_store = mli.DictFeatureStore()
+    feature_store = mli.MemoryFeatureStore()
 
     # todo: consider if this abstraction as reversed. should the FS instead give
     # out keys instead of giving an FS to the key?
@@ -213,7 +210,7 @@ def test_fetch_input_feature_store_missing() -> None:
     worker = mli.MachineLearningWorkerCore
 
     bad_key = "some-key"
-    feature_store = mli.DictFeatureStore()
+    feature_store = mli.MemoryFeatureStore()
     # key = mli.FeatureStoreKey(bad_key, feature_store)
 
     # todo: consider that raising this exception shows impl. replace...
@@ -228,7 +225,7 @@ def test_fetch_input_memory(persist_tensor_file: pathlib.Path) -> None:
     """Verify that the ML worker successfully retrieves a tensor/input
     when given a valid (file system) key"""
     worker = mli.MachineLearningWorkerCore
-    feature_store = mli.DictFeatureStore()
+    feature_store = mli.MemoryFeatureStore()
 
     model_name = "test-model"
     feature_store[model_name] = persist_tensor_file.read_bytes()
@@ -252,22 +249,17 @@ def test_place_outputs() -> None:
     worker = mli.MachineLearningWorkerCore
 
     key_name = "test-model"
-    feature_store = mli.DictFeatureStore()
+    feature_store = mli.MemoryFeatureStore()
 
     # create a key to retrieve from the feature store
-    key1 = mli.FeatureStoreKey(key_name + "1", feature_store)
-    key2 = mli.FeatureStoreKey(key_name + "2", feature_store)
-    key3 = mli.FeatureStoreKey(key_name + "3", feature_store)
-    exp_keys = key1, key2, key3
-
     keys = key_name + "1", key_name + "2", key_name + "3"
     data = b"abcdef", b"ghijkl", b"mnopqr"
 
+    for k, v in zip(keys, data):
+        feature_store[k] = v
+
     output_keys = worker.place_output(keys, data, feature_store)
     assert len(output_keys) == len(keys)
-
-    for i, exp_key in enumerate(exp_keys):
-        assert exp_key.retrieve() == data[i]
 
     for i in range(3):
         assert feature_store[keys[i]] == data[i]

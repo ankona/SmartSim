@@ -32,23 +32,6 @@ class DragonDict:
         return key in self._storage
 
 
-class ResourceKey(ABC):
-    """Uniquely identify the resource by location"""
-
-    def __init__(self, key: str) -> None:
-        self._key = key
-
-    @property
-    def key(self) -> str:
-        return self._key
-
-    @abstractmethod
-    def retrieve(self) -> bytes: ...
-
-    @abstractmethod
-    def put(self, value: bytes) -> None: ...
-
-
 class FeatureStore(ABC):
     @abstractmethod
     def __getitem__(self, key: str) -> bytes: ...
@@ -59,17 +42,14 @@ class FeatureStore(ABC):
     @abstractmethod
     def __contains__(self, key: str) -> bool: ...
 
-    def get_key(self, key: str) -> t.Optional[ResourceKey]:
-        if key in self:
-            return FeatureStoreKey(key, self)
-        return None
 
-
-class DictFeatureStore(FeatureStore):
+class MemoryFeatureStore(FeatureStore):
     def __init__(self) -> None:
         self._storage: t.Dict[str, bytes] = {}  # defaultdict(lambda: None)
 
     def __getitem__(self, key: str) -> bytes:
+        if key not in self._storage:
+            raise sse.SmartSimError(f"{key} not found in feature store")
         return self._storage[key]
 
     def __setitem__(self, key: str, value: bytes) -> None:
@@ -79,12 +59,39 @@ class DictFeatureStore(FeatureStore):
         return key in self._storage
 
 
+class FileSystemFeatureStore(FeatureStore):
+    def __init__(self, storage_dir: t.Optional[pathlib.Path] = None) -> None:
+        self._storage_dir = storage_dir
+
+    def __getitem__(self, key: str) -> bytes:
+        path = self._key_path(key)
+        if not path.exists():
+            raise sse.SmartSimError(f"{path} not found in feature store")
+        return path.read_bytes()
+
+    def __setitem__(self, key: str, value: bytes) -> None:
+        path = self._key_path(key)
+        path.write_bytes(value)
+
+    def __contains__(self, key: str) -> bool:
+        path = self._key_path(key)
+        return path.exists()
+
+    def _key_path(self, key: str) -> pathlib.Path:
+        if self._storage_dir:
+            return self._storage_dir / key
+
+        return pathlib.Path(key)
+
+
 class DragonFeatureStore(FeatureStore):
     def __init__(self, storage: DragonDict) -> None:
         self._storage = storage
 
     def __getitem__(self, key: str) -> t.Any:
         key_ = key.encode("utf-8")
+        if key_ not in self._storage:
+            raise sse.SmartSimError(f"{key} not found in feature store")
         return self._storage[key_]
 
     def __setitem__(self, key: str, value: bytes) -> None:
@@ -97,62 +104,18 @@ class DragonFeatureStore(FeatureStore):
         return key in self._storage
 
 
-class FeatureStoreKey(ResourceKey):
-    def __init__(self, key: str, feature_store: FeatureStore):
-        super().__init__(key)
-        self._feature_store = feature_store
-
-    def retrieve(self) -> bytes:
-        if self._key not in self._feature_store:
-            raise KeyError(f"`{self._key}` not found in feature store")
-        return self._feature_store[self._key]
-
-    def put(self, value: bytes) -> None:
-        self._feature_store[self._key] = value
-
-
-class FileSystemKey(ResourceKey):
-    def __init__(self, path: pathlib.Path):
-        super().__init__(path.absolute().as_posix())
-
-    @property
-    def path(self) -> pathlib.Path:
-        return pathlib.Path(self._key)
-
-    def retrieve(self) -> bytes:
-        if not self.path.exists():
-            raise KeyError(f"Invalid FileSystemKey; `{self.path}` was not found")
-
-        return self.path.read_bytes()
-
-    def put(self, value: bytes) -> None:
-        with self.path as write_to:
-            write_to.write_bytes(value)
-
-
-class MemoryKey(ResourceKey):
-    def __init__(self, key: str, value: bytes):
-        super().__init__(key)
-        self._value = value
-
-    def retrieve(self) -> bytes:
-        if not self._value:
-            raise ValueError("MemoryKey references empty value")
-        return self._value
-
-    def put(self, value: bytes) -> None:
-        self._value = value
-
-
 class MachineLearningModelRef:
-    def __init__(self, backend: str, key: t.Optional[ResourceKey] = None) -> None:
+    def __init__(
+        self, backend: str, feature_store: FeatureStore, key: t.Optional[str] = None
+    ) -> None:
         self._backend = backend
-        self._key: t.Optional[ResourceKey] = key
+        self._key = key
+        self._feature_store = feature_store
 
     def model(self) -> bytes:
         if not self._key:
             raise ValueError("Key not set")
-        return self._key.retrieve()
+        return self._feature_store[self._key]
 
     @property
     def backend(self) -> str:
@@ -230,17 +193,15 @@ class MachineLearningWorkerCore:
     """Basic functionality of ML worker that is shared across all worker types"""
 
     @staticmethod
-    def fetch_model(key: ResourceKey) -> bytes:
+    def fetch_model(key: str, feature_store: FeatureStore) -> bytes:
         """Given a ResourceKey, identify the physical location and model metadata"""
         try:
-            return key.retrieve()
-        except KeyError as ex:
+            return feature_store[key]
+        except FileNotFoundError as ex:
             print(ex)  # todo: logger.error
             raise sse.SmartSimError(
-                f"Model could not be retrieved with key {key.key}"
+                f"Model could not be retrieved with key {key}"
             ) from ex
-        # value = feature_store[key.key]
-        # return value
 
     @staticmethod
     def fetch_inputs(
@@ -282,14 +243,14 @@ class MachineLearningWorkerCore:
         feature_store: FeatureStore,
         # need to know how to get back to original sub-batch inputs so they can be
         # accurately placed, datum might need to include this.
-    ) -> t.Collection[t.Optional[ResourceKey]]:
+    ) -> t.Collection[t.Optional[str]]:
         """Given a collection of data, make it available as a shared resource in the
         feature store"""
-        keys: t.List[t.Optional[ResourceKey]] = []
+        keys: t.List[t.Optional[str]] = []
 
         for k, v in zip(raw_keys, data):
             feature_store[k] = v
-            keys.append(feature_store.get_key(k))
+            keys.append(k)
 
         return keys
 
@@ -547,15 +508,7 @@ class WorkerManager(ServiceHost):
             output_keys = self._worker.place_output(
                 request.output_keys, results, self._feature_store
             )
-
-            keys: t.List[t.Optional[str]] = []
-            for resource in output_keys:
-                if resource is None:
-                    keys.append(None)
-                else:
-                    keys.append(resource.key)
-
-            reply.output_keys = keys
+            reply.output_keys = output_keys
         else:
             reply.outputs = results
 
