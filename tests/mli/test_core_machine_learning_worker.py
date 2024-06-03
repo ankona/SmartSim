@@ -271,4 +271,3 @@ def test_place_outputs() -> None:
 
     for i in range(3):
         assert feature_store[keys[i]] == data[i]
-
