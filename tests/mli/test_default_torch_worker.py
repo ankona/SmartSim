@@ -1,9 +1,10 @@
 import io
 import pathlib
 import pickle
+import typing as t
+
 import pytest
 import torch
-import typing as t
 
 from smartsim import workermanager as mli
 from smartsim._core.utils import installed_redisai_backends
@@ -39,10 +40,7 @@ def test_deserialize() -> None:
     """Verify that serialized requests are properly deserialized to
     and converted to the internal representation used by ML workers"""
     worker = mli.DefaultTorchWorker
-
-    # tensor = torch.randn(42)
     buffer = io.BytesIO()
-    # torch.save(tensor, buffer)
 
     exp_backend = "TestBackend"
     exp_value = b"test-value"
@@ -139,22 +137,30 @@ def test_transform_input() -> None:
     """Verify that the default input transform operation is a no-op copy"""
     rows, cols = 1, 4
     num_values = 7
-    inputs = [torch.randn((rows, cols)) for _ in range(num_values)]
-    exp_outputs = [torch.Tensor(tensor) for tensor in inputs]
+    tensors = [torch.randn((rows, cols)) for _ in range(num_values)]
+
+    inputs: t.List[bytes] = []
+    for tensor in tensors:
+        buffer = io.BytesIO()
+        torch.save(tensor, buffer)
+        inputs.append(buffer.getvalue())
 
     worker = mli.DefaultTorchWorker
     transformed: t.Collection[torch.Tensor] = worker.transform_input(inputs)
 
     assert len(transformed) == num_values
 
-    for output, expected in zip(transformed, exp_outputs):
+    for output, expected in zip(transformed, tensors):
         assert output.shape == expected.shape
         assert output.equal(expected)
 
-    # verify a copy was made
-    original: torch.Tensor = inputs[0]
-    transformed[0] = 2 * transformed[0]
+    transformed = list(transformed)
 
+    original: torch.Tensor = tensors[0]
+    assert transformed[0].equal(original)
+
+    # now, verify a copy was made
+    transformed[0] = 2 * transformed[0]
     assert transformed[0].equal(2 * original)
 
 
@@ -167,10 +173,8 @@ def test_execute_model(persist_model_file: pathlib.Path) -> None:
     worker = mli.DefaultTorchWorker
     model_ref = mli.MachineLearningModelRef(worker.backend(), key)
 
-    # model = worker.load_model(model_ref)
     input = torch.randn(2)
-
-    pred: t.List[torch.Tensor] = worker.execute(model_ref, [input])
+    pred = worker.execute(model_ref, [input])
 
     assert pred
 
@@ -208,6 +212,8 @@ def test_transform_output() -> None:
     for output, expected in zip(transformed, exp_outputs):
         assert output.shape == expected.shape
         assert output.equal(expected)
+
+    transformed = list(transformed)
 
     # verify a copy was made
     original: torch.Tensor = inputs[0]
