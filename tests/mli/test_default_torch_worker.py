@@ -159,7 +159,7 @@ def test_transform_input() -> None:
     original: torch.Tensor = tensors[0]
     assert transformed[0].equal(original)
 
-    # now, verify a copy was made
+    # verify a copy was made
     transformed[0] = 2 * transformed[0]
     assert transformed[0].equal(2 * original)
 

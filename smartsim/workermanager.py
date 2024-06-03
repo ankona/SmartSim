@@ -38,19 +38,6 @@ class ResourceKey(ABC):
     def __init__(self, key: str) -> None:
         self._key = key
 
-    #     self._uid: t.Optional[uuid.UUID] = None
-    #     """A unique identifier for the resource"""
-    #     self._loc: t.Optional[pathlib.Path] = None
-    #     """A physical location where the resource can be retrieved"""
-    #     self._key: t.Optional[str] = None
-    #     """A key to reference the resource if it is already loaded in memory"""
-
-    # @classmethod
-    # def from_buffer(self, key: bytes, buffer: bytes) -> "ResourceKey":
-    #     resource = ResourceKey(key)
-    #     resource._value = buffer
-    #     return resource
-
     @property
     def key(self) -> str:
         return self._key
@@ -72,9 +59,6 @@ class FeatureStore(ABC):
     @abstractmethod
     def __contains__(self, key: str) -> bool: ...
 
-    # @abstractmethod
-    # def get_key(self, key: str) -> ResourceKey: ...
-
     def get_key(self, key: str) -> t.Optional[ResourceKey]:
         if key in self:
             return FeatureStoreKey(key, self)
@@ -93,11 +77,6 @@ class DictFeatureStore(FeatureStore):
 
     def __contains__(self, key: str) -> bool:
         return key in self._storage
-
-    # def get_key(self, key: str) -> t.Optional[ResourceKey]:
-    #     if key in self._storage:
-    #         return FeatureStoreKey(key, self)
-    #     return None
 
 
 class DragonFeatureStore(FeatureStore):
@@ -180,47 +159,6 @@ class MachineLearningModelRef:
         return self._backend
 
 
-# _Datum = t.TypeVar("_Datum")
-
-
-# class Datum(t.Generic[_DatumT]):
-#     @property
-#     @abstractmethod
-#     def key(self) -> str: ...
-
-#     @property
-#     @abstractmethod
-#     def value(self) -> _DatumT: ...
-
-
-# class ResourceDatum(Datum[_DatumT]):
-#     def __init__(self, key: ResourceKey) -> None:
-#         self._key: ResourceKey = key
-
-#     @property
-#     def key(self) -> str:
-#         return self._key.key
-
-#     @property
-#     def value(self) -> _DatumT:
-#         raw_bytes = self._key.retrieve()
-#         return self._transform_raw_bytes(raw_bytes)
-
-#     @abstractmethod
-#     def _transform_raw_bytes(self, raw_bytes: bytes) -> Datum[_DatumT]: ...
-
-
-# class TorchResource(ResourceDatum[torch.Tensor]):
-#     def __init__(self, key: ResourceKey, shape: t.Tuple[int]):
-#         super().__init__(key)
-#         self._shape = shape
-
-#     def _transform_raw_bytes(self, raw_bytes: bytes) -> torch.Tensor:
-#         storage = torch.Storage.from_buffer(raw_bytes)
-#         raw_tensor = torch.Tensor(storage)
-#         return raw_tensor.reshape(self._shape)
-
-
 class CommChannel(ABC):
     @abstractmethod
     def send(self, value: bytes) -> None: ...
@@ -277,32 +215,6 @@ class InferenceRequest:
         self.input_keys = input_keys or []
         self.output_keys = output_keys or []
 
-    # @classmethod
-    # def from_msg(cls, msg: bytes) -> "t.Optional[InferenceRequest]":
-    #     msg_str = msg.decode("utf-8")
-    #     # todo: we'll need to filter properly ... or assume all
-    #     #  messages are inference reqs
-    #     if not ":" in msg_str or not msg_str.startswith("PyTorch"):
-    #         return None
-
-    #     prefix, model_path, serialized_input, serialized_channel = msg_str.split(
-    #         ":", maxsplit=3
-    #     )
-
-    #     # callback = CommChannel.find(serialized_channel)
-    #     # key = FileSystemKey(f"{prefix}:{model_name}".encode("utf-8"))
-
-    #     key = FileSystemKey(pathlib.Path(model_path))
-
-    #     persistence_path = pathlib.Path(serialized_channel)
-    #     callback = FileCommChannel(persistence_path)
-
-    #     # input_keys = [FileSystem] # fail! can't know key type here... pass
-    #     # feature_store? nothing?
-
-    #     model = MachineLearningModelRef(prefix, key)
-    #     return InferenceRequest(prefix, model, callback, serialized_input)
-
 
 class InferenceReply:
     def __init__(
@@ -339,16 +251,10 @@ class MachineLearningWorkerCore:
         data: t.List[bytes] = []
         for input_ in inputs:
             try:
-                resource_key = FeatureStoreKey(input_, feature_store)
-                # data: t.List[bytes] = [input_.retrieve() for input_ in inputs]
-                tensor_bytes = resource_key.retrieve()
-                # byte_stream = io.BytesIO(tensor_bytes)
-                # todo: this can't be tied to torch... i must switch this to return
-                # bytes and make the client code convert to actual Tensor types..
-                # tensor: torch.Tensor = torch.load(byte_stream)
+                tensor_bytes = feature_store[input_]
                 data.append(tensor_bytes)
             except KeyError as ex:
-                print(ex)  # todo: logger.error
+                print(ex)
                 raise sse.SmartSimError(
                     f"Model could not be retrieved with key {input_}"
                 ) from ex
@@ -425,10 +331,6 @@ class MachineLearningWorkerBase(MachineLearningWorkerCore, ABC):
         data: t.Collection[_Datum],
     ) -> t.Collection[_Datum]:
         """Given a collection of data, perform a transformation on the data"""
-        # TODO: determine if a single `transform_data` method can supply base
-        # feature (e.g. pre-built transforms + option of sending transform callable)?
-        # No... this explicit way gives the pipeline a definite pre and post call
-        # that are easy to understand
 
     @staticmethod
     @abstractmethod
@@ -445,8 +347,6 @@ class DefaultTorchWorker(MachineLearningWorkerBase):
     def deserialize(data_blob: bytes) -> InferenceRequest:
         """Given a byte-serialized request, convert the bytes
         to a proper representation for use by the ML backend"""
-        # tensor: torch.Tensor = torch.load(io.BytesIO(data_blob))
-        # return tensor
         # TODO: note - this is temporary (using pickle) until a serializer is
         # created and we replace it...
         request: InferenceRequest = pickle.loads(data_blob)
@@ -471,9 +371,6 @@ class DefaultTorchWorker(MachineLearningWorkerBase):
         data: t.Collection[bytes],
     ) -> t.Collection[_Datum]:
         """Given a collection of data, perform a no-op, copy-only transform"""
-        # todo: make .copy pass mypy (e.g. missing tgt of copy_(source, target,
-        # blocking)?
-        # return data
         return [torch.load(io.BytesIO(item)) for item in data]
         # return data # note: this fails copy test!
 
@@ -495,11 +392,6 @@ class DefaultTorchWorker(MachineLearningWorkerBase):
         # tensors. my generic probably fails here."
     ) -> t.Collection[_Datum]:
         """Given a collection of data, perform a no-op, copy-only transform"""
-        # TODO: determine if a single `transform_data` method can supply base
-        # feature (e.g. pre-built transforms + option of sending transform callable)?
-        # No... this explicit way gives the pipeline a definite pre and post call
-        # that are easy to understand
-        # return [torch.Tensor.copy_(item, False) for item in data]
         return [item.clone() for item in data]
 
     @staticmethod
@@ -635,7 +527,6 @@ class WorkerManager(ServiceHost):
 
         request = self._worker.deserialize(msg)
 
-        # model_bytes = self._worker.fetch_model(request.model._key) # bad style...
         model = self._worker.load_model(request.model)
         fetched_inputs = self._worker.fetch_inputs(
             request.input_keys, self._feature_store
@@ -670,7 +561,6 @@ class WorkerManager(ServiceHost):
 
         serialized_output = self._worker.serialize_reply(reply)
 
-        # self._deserialize_channel_descriptor(request.callback)
         callback_channel = request.callback
         if callback_channel:
             callback_channel.send(serialized_output)
