@@ -6,6 +6,7 @@ import typing as t
 import pytest
 import torch
 
+import smartsim.error as sse
 from smartsim import workermanager as mli
 from smartsim._core.utils import installed_redisai_backends
 
@@ -54,32 +55,14 @@ def test_deserialize() -> None:
 
 
 def test_load_model_from_disk(persist_model_file: pathlib.Path) -> None:
-    """Verify that a model can be loaded using a FileSystemKey"""
+    """Verify that a model can be loaded using a FileSystemFeatureStore"""
     worker = mli.DefaultTorchWorker
-    key = mli.FileSystemKey(persist_model_file)
-    model_ref = mli.MachineLearningModelRef(worker.backend(), key)
 
-    model = worker.load_model(model_ref)
-
-    input = torch.randn(2)
-    pred = model(input)
-
-    assert pred
-
-
-def test_load_model_from_feature_store(persist_model_file: pathlib.Path) -> None:
-    """Verify that a model can be loaded using a FileSystemKey"""
-
-    model_name = "test-model"
-    feature_store = mli.DictFeatureStore()
-
-    # create a key to retrieve from the feature store
-    key = mli.FeatureStoreKey(model_name, feature_store)
-    # put model bytes into the feature store
-    key.put(persist_model_file.read_bytes())
-
-    worker = mli.DefaultTorchWorker
-    model_ref = mli.MachineLearningModelRef(worker.backend(), key)
+    feature_store = mli.FileSystemFeatureStore()
+    feature_store[str(persist_model_file)] = persist_model_file.read_bytes()
+    model_ref = mli.MachineLearningModelRef(
+        worker.backend(), feature_store, str(persist_model_file)
+    )
 
     model = worker.load_model(model_ref)
 
@@ -92,11 +75,13 @@ def test_load_model_from_feature_store(persist_model_file: pathlib.Path) -> None
 def test_load_model_from_memory(persist_model_file: pathlib.Path) -> None:
     """Verify that a model can be loaded using a MemoryKey"""
 
-    # put model bytes into memory
-    key = mli.MemoryKey("test-key", persist_model_file.read_bytes())
+    # put model bytes into feature store
+    model_name = "test-key"
+    feature_store = mli.MemoryFeatureStore()
+    feature_store[model_name] = persist_model_file.read_bytes()
 
     worker = mli.DefaultTorchWorker
-    model_ref = mli.MachineLearningModelRef(worker.backend(), key)
+    model_ref = mli.MachineLearningModelRef(worker.backend(), feature_store, model_name)
 
     model = worker.load_model(model_ref)
 
@@ -111,18 +96,12 @@ def test_load_model_from_dragon(persist_model_file: pathlib.Path) -> None:
     """Verify that a model can be loaded using a key ref to dragon feature store"""
 
     model_name = "test-model"
-    storage = (
-        mli.DragonDict()
-    )  # todo: use _real_ DragonDict instead of mock & re-enable skipif
-    feature_store = mli.DragonFeatureStore(storage)
-
-    # create a key to retrieve from the feature store
-    key = mli.FeatureStoreKey(model_name, feature_store)
-    # put model bytes into the feature store
-    key.put(persist_model_file.read_bytes())
+    # todo: use _real_ DragonDict instead of mock & re-enable skipif
+    feature_store = mli.DragonFeatureStore(mli.DragonDict())
+    feature_store[model_name] = persist_model_file.read_bytes()
 
     worker = mli.DefaultTorchWorker
-    model_ref = mli.MachineLearningModelRef(worker.backend(), key)
+    model_ref = mli.MachineLearningModelRef(worker.backend(), feature_store, model_name)
 
     model = worker.load_model(model_ref)
 
@@ -168,10 +147,12 @@ def test_execute_model(persist_model_file: pathlib.Path) -> None:
     """Verify that a model executes corrrectly via the worker"""
 
     # put model bytes into memory
-    key = mli.MemoryKey("test-key", persist_model_file.read_bytes())
+    model_name = "test-key"
+    feature_store = mli.MemoryFeatureStore()
+    feature_store[model_name] = persist_model_file.read_bytes()
 
     worker = mli.DefaultTorchWorker
-    model_ref = mli.MachineLearningModelRef(worker.backend(), key)
+    model_ref = mli.MachineLearningModelRef(worker.backend(), feature_store, model_name)
 
     input = torch.randn(2)
     pred = worker.execute(model_ref, [input])
@@ -185,15 +166,19 @@ def test_execute_missing_model(persist_model_file: pathlib.Path) -> None:
     # todo: consider moving to file specific to key tests
 
     # use key that references an un-set model value
-    key = mli.MemoryKey("test-key", b"")
+    model_name = "test-key"
+    feature_store = mli.MemoryFeatureStore()
+    feature_store[model_name] = persist_model_file.read_bytes()
 
     worker = mli.DefaultTorchWorker
-    model_ref = mli.MachineLearningModelRef(worker.backend(), key)
+    model_ref = mli.MachineLearningModelRef(
+        worker.backend(), feature_store, model_name + "not_there"
+    )
 
-    with pytest.raises(ValueError) as ex:
+    with pytest.raises(sse.SmartSimError) as ex:
         model_ref.model()
 
-    assert "empty value" in ex.value.args[0]
+    assert model_name in ex.value.args[0]
 
 
 @pytest.mark.skipif(not torch_available, reason="Torch backend is not installed")
