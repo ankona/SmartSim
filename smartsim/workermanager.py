@@ -1,19 +1,19 @@
-import typing as t
+import io
+import multiprocessing as mp
 import pathlib
 import pickle
+import time
+import typing as t
 from abc import ABC, abstractmethod
 
-import io
-import time
 import torch
-
-import multiprocessing as mp
-
 
 import smartsim.error as sse
 
 if t.TYPE_CHECKING:
     import dragon.channels as dch
+
+_Datum = t.Union[torch.Tensor]
 
 
 class DragonDict:
@@ -63,7 +63,6 @@ class ResourceKey(ABC):
 
 
 class FeatureStore(ABC):
-
     @abstractmethod
     def __getitem__(self, key: str) -> bytes: ...
 
@@ -172,6 +171,8 @@ class MachineLearningModelRef:
         self._key: t.Optional[ResourceKey] = key
 
     def model(self) -> bytes:
+        if not self._key:
+            raise ValueError("Key not set")
         return self._key.retrieve()
 
     @property
@@ -179,50 +180,48 @@ class MachineLearningModelRef:
         return self._backend
 
 
-_DatumT = t.TypeVar("_DatumT")
+# _Datum = t.TypeVar("_Datum")
 
 
-class Datum(t.Generic[_DatumT]):
+# class Datum(t.Generic[_DatumT]):
+#     @property
+#     @abstractmethod
+#     def key(self) -> str: ...
 
-    @property
-    @abstractmethod
-    def key(self) -> bytes: ...
-
-    @property
-    @abstractmethod
-    def value(self) -> _DatumT: ...
-
-
-class ResourceDatum(Datum[_DatumT]):
-    def __init__(self, key: ResourceKey) -> None:
-        self._key: ResourceKey = key
-
-    @property
-    def key(self) -> bytes:
-        return self._key.key
-
-    @property
-    def value(self) -> Datum[_DatumT]:
-        raw_bytes = self._key.retrieve()
-        return self._transform_raw_bytes(raw_bytes)
-
-    @abstractmethod
-    def _transform_raw_bytes(self, raw_bytes: bytes) -> Datum[_DatumT]: ...
+#     @property
+#     @abstractmethod
+#     def value(self) -> _DatumT: ...
 
 
-class TorchResource(ResourceDatum[torch.Tensor]):
-    def __init__(self, key: ResourceKey, shape: t.Tuple[int]):
-        super().__init__(key)
-        self._shape = shape
+# class ResourceDatum(Datum[_DatumT]):
+#     def __init__(self, key: ResourceKey) -> None:
+#         self._key: ResourceKey = key
 
-    def _transform_raw_bytes(self, raw_bytes: bytes) -> torch.Tensor:
-        storage = torch.Storage.from_buffer(raw_bytes)
-        raw_tensor = torch.Tensor(storage)
-        return raw_tensor.reshape(self._shape)
+#     @property
+#     def key(self) -> str:
+#         return self._key.key
+
+#     @property
+#     def value(self) -> _DatumT:
+#         raw_bytes = self._key.retrieve()
+#         return self._transform_raw_bytes(raw_bytes)
+
+#     @abstractmethod
+#     def _transform_raw_bytes(self, raw_bytes: bytes) -> Datum[_DatumT]: ...
+
+
+# class TorchResource(ResourceDatum[torch.Tensor]):
+#     def __init__(self, key: ResourceKey, shape: t.Tuple[int]):
+#         super().__init__(key)
+#         self._shape = shape
+
+#     def _transform_raw_bytes(self, raw_bytes: bytes) -> torch.Tensor:
+#         storage = torch.Storage.from_buffer(raw_bytes)
+#         raw_tensor = torch.Tensor(storage)
+#         return raw_tensor.reshape(self._shape)
 
 
 class CommChannel(ABC):
-
     @abstractmethod
     def send(self, value: bytes) -> None: ...
 
@@ -262,7 +261,6 @@ class DragonCommChannel(CommChannel):
 
 
 class InferenceRequest:
-
     def __init__(
         self,
         backend: t.Optional[str] = None,
@@ -308,16 +306,16 @@ class InferenceRequest:
 
 class InferenceReply:
     def __init__(
-        self, outputs: bytes = b"", output_keys: t.Optional[t.Collection[str]] = None
+        self,
+        outputs: t.Optional[t.Collection[bytes]] = None,
+        output_keys: t.Optional[t.Collection[str]] = None,
     ) -> None:
-        self.outputs: bytes = outputs
-        self.output_keys: t.Collection[str] = output_keys or []
+        self.outputs: t.Collection[bytes] = outputs or []
+        self.output_keys: t.Collection[t.Optional[str]] = output_keys or []
 
 
 class MachineLearningWorkerCore:
     """Basic functionality of ML worker that is shared across all worker types"""
-
-    # def __init__(self, worker)
 
     @staticmethod
     def fetch_model(key: ResourceKey) -> bytes:
@@ -333,30 +331,40 @@ class MachineLearningWorkerCore:
         # return value
 
     @staticmethod
-    def fetch_inputs(inputs: t.Collection[ResourceKey]) -> t.Collection[bytes]:
+    def fetch_inputs(
+        inputs: t.Collection[str], feature_store: FeatureStore
+    ) -> t.Collection[bytes]:
         """Given a collection of ResourceKeys, identify the physical location
         and input metadata"""
         data: t.List[bytes] = []
         for input_ in inputs:
             try:
+                resource_key = FeatureStoreKey(input_, feature_store)
                 # data: t.List[bytes] = [input_.retrieve() for input_ in inputs]
-                data.append(input_.retrieve())
+                tensor_bytes = resource_key.retrieve()
+                # byte_stream = io.BytesIO(tensor_bytes)
+                # todo: this can't be tied to torch... i must switch this to return
+                # bytes and make the client code convert to actual Tensor types..
+                # tensor: torch.Tensor = torch.load(byte_stream)
+                data.append(tensor_bytes)
             except KeyError as ex:
                 print(ex)  # todo: logger.error
                 raise sse.SmartSimError(
-                    f"Model could not be retrieved with key {input_.key}"
+                    f"Model could not be retrieved with key {input_}"
                 ) from ex
         return data
 
     @staticmethod
     def batch_requests(
-        data: t.Collection[Datum], batch_size: int
-    ) -> t.Optional[t.Collection[Datum]]:
+        data: t.Collection[_Datum], batch_size: int
+    ) -> t.Collection[_Datum]:
         """Create a batch of requests. Return the batch when batch_size datum have been
         collected or a configured batch duration has elapsed.
 
         Returns `None` if batch size has not been reached and timeout not exceeded."""
-        raise NotImplementedError("Batching is not yet supported")
+        if data or batch_size:
+            raise NotImplementedError("Batching is not yet supported")
+        return []
 
     # todo: place_output is so awkward... why should client need to pass key type?
     # that should be decided by the feature store. fix it.
@@ -368,10 +376,10 @@ class MachineLearningWorkerCore:
         feature_store: FeatureStore,
         # need to know how to get back to original sub-batch inputs so they can be
         # accurately placed, datum might need to include this.
-    ) -> t.Optional[t.Collection[ResourceKey]]:
+    ) -> t.Collection[t.Optional[ResourceKey]]:
         """Given a collection of data, make it available as a shared resource in the
         feature store"""
-        keys: t.List[ResourceKey] = []
+        keys: t.List[t.Optional[ResourceKey]] = []
 
         for k, v in zip(raw_keys, data):
             feature_store[k] = v
@@ -389,7 +397,7 @@ class MachineLearningWorkerBase(MachineLearningWorkerCore, ABC):
 
     @staticmethod
     @abstractmethod
-    def load_model(model_ref: MachineLearningModelRef) -> t.Any:
+    def load_model(model_ref: t.Optional[MachineLearningModelRef]) -> t.Any:
         # model: MLMLocator? something that doesn't say "I am actually the model"
         """Given a loaded MachineLearningModel, ensure it is loaded into
         device memory"""
@@ -397,14 +405,16 @@ class MachineLearningWorkerBase(MachineLearningWorkerCore, ABC):
 
     @staticmethod
     @abstractmethod
-    def transform_input(data: t.Collection[Datum]) -> t.Collection[Datum]:
+    def transform_input(
+        data: t.Collection[bytes],
+    ) -> t.Collection[_Datum]:
         """Given a collection of data, perform a transformation on the data"""
 
     @staticmethod
     @abstractmethod
     def execute(
-        model_ref: MachineLearningModelRef, data: t.Collection[Datum]
-    ) -> t.Collection[t.Any]:
+        model_ref: MachineLearningModelRef, data: t.Collection[_Datum]
+    ) -> t.Collection[bytes]:
         """Execute an ML model on the given inputs"""
 
     @staticmethod
@@ -412,8 +422,8 @@ class MachineLearningWorkerBase(MachineLearningWorkerCore, ABC):
     def transform_output(
         # TODO: ask Al about assumption that "if i put in tensors, i will get out
         # tensors. my generic probably fails here."
-        data: t.Collection[Datum],
-    ) -> t.Collection[Datum]:
+        data: t.Collection[_Datum],
+    ) -> t.Collection[_Datum]:
         """Given a collection of data, perform a transformation on the data"""
         # TODO: determine if a single `transform_data` method can supply base
         # feature (e.g. pre-built transforms + option of sending transform callable)?
@@ -439,30 +449,40 @@ class DefaultTorchWorker(MachineLearningWorkerBase):
         # return tensor
         # TODO: note - this is temporary (using pickle) until a serializer is
         # created and we replace it...
-        return pickle.loads(data_blob)
+        request: InferenceRequest = pickle.loads(data_blob)
+        return request
 
     @staticmethod
-    def load_model(model_ref: MachineLearningModelRef) -> torch.nn.Module:
+    def load_model(model_ref: t.Optional[MachineLearningModelRef]) -> torch.nn.Module:
         # MLMLocator? something that doesn't say "I am actually the model"
         """Given a loaded MachineLearningModel, ensure it is loaded into
         device memory"""
+        if not model_ref:
+            raise ValueError("Unable to load model without reference object")
+
         # invoke separate API functions to put the model on GPU/accelerator (if exists)
         raw_bytes = model_ref.model()
         model_bytes = io.BytesIO(raw_bytes)
-        model = torch.load(model_bytes)
+        model: torch.nn.Module = torch.load(model_bytes)
         return model
 
     @staticmethod
     def transform_input(
-        data: t.Collection[Datum],
-    ) -> t.Collection[Datum]:
+        data: t.Collection[bytes],
+    ) -> t.Collection[_Datum]:
         """Given a collection of data, perform a no-op, copy-only transform"""
-        return [torch.Tensor.copy_(item, False) for item in data]
+        # todo: make .copy pass mypy (e.g. missing tgt of copy_(source, target,
+        # blocking)?
+        # return data
+        return [torch.load(io.BytesIO(item)) for item in data]
         # return data # note: this fails copy test!
 
     @staticmethod
-    def execute(model_ref: MachineLearningModelRef, data: t.Collection[Datum]) -> t.Any:
+    def execute(
+        model_ref: MachineLearningModelRef, data: t.Collection[_Datum]
+    ) -> t.Collection[bytes]:
         """Execute an ML model on the given inputs"""
+        # todo: shouldn't be reloading model. need to pass model in instead?
         model = DefaultTorchWorker.load_model(model_ref)
         results = [model(tensor) for tensor in data]
         return results
@@ -470,16 +490,17 @@ class DefaultTorchWorker(MachineLearningWorkerBase):
     # todo: ask team if we should always do in-place to avoid copying everything
     @staticmethod
     def transform_output(
-        data: t.Collection[Datum],
+        data: t.Collection[_Datum],
         # TODO: ask Al about assumption that "if i put in tensors, i will get out
         # tensors. my generic probably fails here."
-    ) -> t.Collection[Datum]:
+    ) -> t.Collection[_Datum]:
         """Given a collection of data, perform a no-op, copy-only transform"""
         # TODO: determine if a single `transform_data` method can supply base
         # feature (e.g. pre-built transforms + option of sending transform callable)?
         # No... this explicit way gives the pipeline a definite pre and post call
         # that are easy to understand
-        return [torch.Tensor.copy_(item, False) for item in data]
+        # return [torch.Tensor.copy_(item, False) for item in data]
+        return [item.clone() for item in data]
 
     @staticmethod
     def serialize_reply(reply: InferenceReply) -> bytes:
@@ -568,7 +589,6 @@ class ServiceHost(ABC):
 
 
 class WorkerManager(ServiceHost):
-
     def __init__(
         self,
         feature_store: FeatureStore,
@@ -579,9 +599,11 @@ class WorkerManager(ServiceHost):
     ) -> None:
         super().__init__(as_service, cooldown)
 
-        self._workers: t.Dict[str, MachineLearningWorkerBase] = {}
+        self._workers: t.Dict[
+            str, "t.Tuple[MachineLearningWorkerBase, mp.Queue[bytes]]"
+        ] = {}
         """a collection of workers the manager is controlling"""
-        self._upstream_queue: t.Optional[mp.Queue] = None
+        self._upstream_queue: t.Optional[mp.Queue[bytes]] = None
         """the queue the manager monitors for new tasks"""
         self._feature_store: FeatureStore = feature_store
         """a feature store to retrieve models from"""
@@ -591,15 +613,15 @@ class WorkerManager(ServiceHost):
         """The number of inputs to batch for execution."""
 
     @property
-    def upstream_queue(self) -> t.Optional[mp.Queue]:
+    def upstream_queue(self) -> "t.Optional[mp.Queue[bytes]]":
         return self._upstream_queue
 
     @upstream_queue.setter
-    def upstream_queue(self, value: mp.Queue) -> None:
+    def upstream_queue(self, value: "mp.Queue[bytes]") -> None:
         self._upstream_queue = value
 
     @property
-    def batch_size(self) -> t.Optional[mp.Queue]:
+    def batch_size(self) -> int:
         return self._batch_size
 
     def _on_iteration(self, timestamp: int) -> None:
@@ -609,19 +631,22 @@ class WorkerManager(ServiceHost):
             print("No queue to check for tasks")
             return
 
-        msg: str = self.upstream_queue.get()
+        msg: bytes = self.upstream_queue.get()
 
         request = self._worker.deserialize(msg)
 
         # model_bytes = self._worker.fetch_model(request.model._key) # bad style...
         model = self._worker.load_model(request.model)
-        feteched_inputs = self._worker.fetch_inputs(request.input_keys)
-        transformed_inputs = self._worker.transform_input(feteched_inputs)
+        fetched_inputs = self._worker.fetch_inputs(
+            request.input_keys, self._feature_store
+        )
+        transformed_inputs = self._worker.transform_input(fetched_inputs)
 
-        batch = [*transformed_inputs]
+        batch: t.Collection[_Datum] = transformed_inputs
         if self._batch_size:
             batch = self._worker.batch_requests(transformed_inputs, self._batch_size)
 
+        # todo: what do we return here? tensors? Datum? bytes?
         results = self._worker.execute(model, batch)
 
         reply = InferenceReply()
@@ -631,7 +656,15 @@ class WorkerManager(ServiceHost):
             output_keys = self._worker.place_output(
                 request.output_keys, results, self._feature_store
             )
-            reply.output_keys = output_keys
+
+            keys: t.List[t.Optional[str]] = []
+            for resource in output_keys:
+                if resource is None:
+                    keys.append(None)
+                else:
+                    keys.append(resource.key)
+
+            reply.output_keys = keys
         else:
             reply.outputs = results
 
@@ -639,25 +672,19 @@ class WorkerManager(ServiceHost):
 
         # self._deserialize_channel_descriptor(request.callback)
         callback_channel = request.callback
-        callback_channel.send(serialized_output)
+        if callback_channel:
+            callback_channel.send(serialized_output)
 
     def _can_shutdown(self) -> bool:
         return bool(self._workers)
 
     def add_worker(
-        self, worker: MachineLearningWorkerBase, work_queue: mp.Queue
+        self, worker: MachineLearningWorkerBase, work_queue: "mp.Queue[bytes]"
     ) -> None:
-        self._workers[worker.model.backend] = (worker, work_queue)
-
-    # def _deserialize_channel_descriptor(self, value: bytes) -> CommChannel:
-    #     channel = FileCommChannel.find(
-    #         value
-    #     )  # todo: inject CommChannels based on messages...
-    #     # channel.send(value)
-    #     return channel
+        self._workers[worker.backend()] = (worker, work_queue)
 
 
-def mock_work(worker_manager_queue: mp.Queue) -> None:
+def mock_work(worker_manager_queue: "mp.Queue[bytes]") -> None:
     while True:
         time.sleep(1)
         # 1. for demo, ignore upstream and just put stuff into downstream
@@ -693,7 +720,9 @@ def mock_work(worker_manager_queue: mp.Queue) -> None:
 
 if __name__ == "__main__":
 
-    # upstream_queue = mp.Queue()  # the incoming messages from application
+    upstream_queue: "mp.Queue[bytes]" = (
+        mp.Queue()
+    )  # the incoming messages from application
     # downstream_queue = mp.Queue()  # the queue to forward messages to a given worker
 
     # torch_worker = TorchWorker(downstream_queue)
@@ -708,8 +737,8 @@ if __name__ == "__main__":
     # # worker_manager.add_worker(torch_worker, downstream_queue)
 
     # # create a pretend to populate the queues
-    # msg_pump = mp.Process(target=mock_work, args=(upstream_queue,))
-    # msg_pump.start()
+    msg_pump = mp.Process(target=mock_work, args=(upstream_queue,))
+    msg_pump.start()
 
     # # create a process to process commands
     # process = mp.Process(target=worker_manager.execute, args=(time.time_ns(),))
