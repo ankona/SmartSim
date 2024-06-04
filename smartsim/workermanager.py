@@ -1,4 +1,5 @@
 import io
+import logging
 import multiprocessing as mp
 import pathlib
 import pickle
@@ -9,75 +10,94 @@ from abc import ABC, abstractmethod
 import torch
 
 import smartsim.error as sse
+from smartsim.log import get_logger
 
 if t.TYPE_CHECKING:
     import dragon.channels as dch
 
 _Datum = t.Union[torch.Tensor]
+logger = get_logger(__name__)
 
 
 class DragonDict:
-    """mock out the dragon dict..."""
+    """Mock implementation of a dragon dictionary"""
 
     def __init__(self) -> None:
+        """Initialize the mock DragonDict instance"""
         self._storage: t.Dict[bytes, t.Any] = {}
 
     def __getitem__(self, key: bytes) -> t.Any:
+        """Retrieve an item using key"""
         return self._storage[key]
 
     def __setitem__(self, key: bytes, item: t.Any) -> None:
+        """Assign a value using key"""
         self._storage[key] = item
 
     def __contains__(self, key: bytes) -> bool:
+        """Return `True` if the key is found, `False` otherwise"""
         return key in self._storage
 
 
 class FeatureStore(ABC):
     @abstractmethod
-    def __getitem__(self, key: str) -> bytes: ...
+    def __getitem__(self, key: str) -> bytes:
+        """Retrieve an item using key"""
 
     @abstractmethod
-    def __setitem__(self, key: str, value: bytes) -> None: ...
+    def __setitem__(self, key: str, value: bytes) -> None:
+        """Assign a value using key"""
 
     @abstractmethod
-    def __contains__(self, key: str) -> bool: ...
+    def __contains__(self, key: str) -> bool:
+        """Return `True` if the key is found, `False` otherwise"""
 
 
 class MemoryFeatureStore(FeatureStore):
     def __init__(self) -> None:
+        """Initialize the MemoryFeatureStore instance"""
         self._storage: t.Dict[str, bytes] = {}  # defaultdict(lambda: None)
 
     def __getitem__(self, key: str) -> bytes:
+        """Retrieve an item using key"""
         if key not in self._storage:
             raise sse.SmartSimError(f"{key} not found in feature store")
         return self._storage[key]
 
     def __setitem__(self, key: str, value: bytes) -> None:
+        """Assign a value using key"""
         self._storage[key] = value
 
     def __contains__(self, key: str) -> bool:
+        """Return `True` if the key is found, `False` otherwise"""
         return key in self._storage
 
 
 class FileSystemFeatureStore(FeatureStore):
     def __init__(self, storage_dir: t.Optional[pathlib.Path] = None) -> None:
+        """Initialize the FileSystemFeatureStore instance"""
         self._storage_dir = storage_dir
 
     def __getitem__(self, key: str) -> bytes:
+        """Retrieve an item using key"""
         path = self._key_path(key)
         if not path.exists():
             raise sse.SmartSimError(f"{path} not found in feature store")
         return path.read_bytes()
 
     def __setitem__(self, key: str, value: bytes) -> None:
+        """Assign a value using key"""
         path = self._key_path(key)
         path.write_bytes(value)
 
     def __contains__(self, key: str) -> bool:
+        """Return `True` if the key is found, `False` otherwise"""
         path = self._key_path(key)
         return path.exists()
 
     def _key_path(self, key: str) -> pathlib.Path:
+        """Given a key, return a path that is optionally combined with a base
+        directory used by the FileSystemFeatureStore."""
         if self._storage_dir:
             return self._storage_dir / key
 
@@ -86,19 +106,23 @@ class FileSystemFeatureStore(FeatureStore):
 
 class DragonFeatureStore(FeatureStore):
     def __init__(self, storage: DragonDict) -> None:
+        """Initialize the DragonFeatureStore instance"""
         self._storage = storage
 
     def __getitem__(self, key: str) -> t.Any:
+        """Retrieve an item using key"""
         key_ = key.encode("utf-8")
         if key_ not in self._storage:
             raise sse.SmartSimError(f"{key} not found in feature store")
         return self._storage[key_]
 
     def __setitem__(self, key: str, value: bytes) -> None:
+        """Assign a value using key"""
         key_ = key.encode("utf-8")
         self._storage[key_] = value
 
     def __contains__(self, key: t.Union[str, bytes]) -> bool:
+        """Return `True` if the key is found, `False` otherwise"""
         if isinstance(key, str):
             key = key.encode("utf-8")
         return key in self._storage
@@ -123,28 +147,35 @@ class MachineLearningModelRef:
 
 
 class CommChannel(ABC):
+    """Base class for abstracting a message passing mechanism"""
+
     @abstractmethod
-    def send(self, value: bytes) -> None: ...
+    def send(self, value: bytes) -> None:
+        """Send the supplied value through the underlying channel as a message"""
 
     @classmethod
     @abstractmethod
     def find(cls, key: bytes) -> "CommChannel":
-        """A way to find a channel with only a serialized key/descriptor"""
+        """Find a channel given its serialized key"""
         raise NotImplementedError()
 
 
 class FileCommChannel(CommChannel):
+    """Passes messages by writing to a file persisted to disk"""
+
     def __init__(self, path: pathlib.Path) -> None:
+        """Initialize the FileCommChannel instance"""
         self._path: pathlib.Path = path
 
     def send(self, value: bytes) -> None:
+        """Write the supplied value to to the file specified as the channel"""
         msg = f"Sending {value.decode('utf-8')} through file channel"
-        print(msg)
+        logger.debug(msg)
         self._path.write_text(msg)
 
     @classmethod
     def find(cls, key: bytes) -> "CommChannel":
-        """A way to find a channel with only a serialized key/descriptor"""
+        """Find a channel given its serialized key"""
         path = pathlib.Path(key.decode("utf-8"))
         if not path.exists():
             path.touch()
@@ -152,16 +183,20 @@ class FileCommChannel(CommChannel):
 
 
 class DragonCommChannel(CommChannel):
+    """Passes messages by writing to a Dragon channel"""
+
     def __init__(self, channel: "dch.Channel") -> None:
+        """Initialize the DragonCommChannel instance"""
         self._channel = channel
 
     def send(self, value: bytes) -> None:
-        # msg = f"Sending {value.decode('utf-8')} through file channel"
-        # self._path.write_text(msg)
+        """Write the supplied value to a Dragon channel"""
         self._channel.send_bytes(value)
 
 
 class InferenceRequest:
+    """Temporary model of an inference request"""
+
     def __init__(
         self,
         backend: t.Optional[str] = None,
@@ -171,6 +206,7 @@ class InferenceRequest:
         input_keys: t.Optional[t.List[str]] = None,
         output_keys: t.Optional[t.List[str]] = None,
     ):
+        """Initialize the InferenceRequest"""
         self.backend = backend
         self.model = model
         self.callback = callback
@@ -180,11 +216,14 @@ class InferenceRequest:
 
 
 class InferenceReply:
+    """Temporary model of a reply to an inference request"""
+
     def __init__(
         self,
         outputs: t.Optional[t.Collection[bytes]] = None,
         output_keys: t.Optional[t.Collection[str]] = None,
     ) -> None:
+        """Initialize the InferenceReply"""
         self.outputs: t.Collection[bytes] = outputs or []
         self.output_keys: t.Collection[t.Optional[str]] = output_keys or []
 
@@ -198,7 +237,7 @@ class MachineLearningWorkerCore:
         try:
             return feature_store[key]
         except FileNotFoundError as ex:
-            print(ex)  # todo: logger.error
+            logger.exception(ex)
             raise sse.SmartSimError(
                 f"Model could not be retrieved with key {key}"
             ) from ex
@@ -208,14 +247,20 @@ class MachineLearningWorkerCore:
         inputs: t.Collection[str], feature_store: FeatureStore
     ) -> t.Collection[bytes]:
         """Given a collection of ResourceKeys, identify the physical location
-        and input metadata"""
+        and input metadata
+
+        :param inputs: Collection of keys identifying values in a feature store
+        :param feature_store: The feature store in use by the worker manager
+
+        :return: Raw bytes identified by the given keys when found, otherwise `None`
+        """
         data: t.List[bytes] = []
         for input_ in inputs:
             try:
                 tensor_bytes = feature_store[input_]
                 data.append(tensor_bytes)
             except KeyError as ex:
-                print(ex)
+                logger.exception(ex)
                 raise sse.SmartSimError(
                     f"Model could not be retrieved with key {input_}"
                 ) from ex
@@ -228,7 +273,10 @@ class MachineLearningWorkerCore:
         """Create a batch of requests. Return the batch when batch_size datum have been
         collected or a configured batch duration has elapsed.
 
-        Returns `None` if batch size has not been reached and timeout not exceeded."""
+        :param data: Collection of input messages that may be added to the current batch
+        :param batch_size: The maximum allowed batch size
+
+        :return: `None` if batch size has not been reached and timeout not exceeded."""
         if data or batch_size:
             raise NotImplementedError("Batching is not yet supported")
         return []
@@ -388,17 +436,17 @@ class ServiceHost(ABC):
     def _on_start(self) -> None:
         """Empty hook method for use by subclasses. Called on initial entry into
         ServiceHost `execute` event loop before `_on_iteration` is invoked."""
-        print(f"Starting {self.__class__.__name__}")
+        logger.debug(f"Starting {self.__class__.__name__}")
 
     def _on_shutdown(self) -> None:
         """Empty hook method for use by subclasses. Called immediately after exiting
         the main event loop during automatic shutdown."""
-        print(f"Shutting down {self.__class__.__name__}")
+        logger.debug(f"Shutting down {self.__class__.__name__}")
 
     def _on_cooldown(self) -> None:
         """Empty hook method for use by subclasses. Called on every event loop
         iteration immediately upon exceeding the cooldown period"""
-        print(f"Cooldown exceeded by {self.__class__.__name__}")
+        logger.debug(f"Cooldown exceeded by {self.__class__.__name__}")
 
     def execute(self) -> None:
         """The main event loop of a service host. Evaluates shutdown criteria and
@@ -440,11 +488,11 @@ class ServiceHost(ABC):
 
                 if not running:
                     cd_in_s = cooldown_ns / nanosecond_scale_factor
-                    print(f"cooldown {cd_in_s}s exceeded by {abs(rem_in_s):.2f}s")
+                    logger.info(f"cooldown {cd_in_s}s exceeded by {abs(rem_in_s):.2f}s")
                     self._on_cooldown()
                     continue
 
-                print(f"cooldown remaining {abs(rem_in_s):.2f}s")
+                logger.debug(f"cooldown remaining {abs(rem_in_s):.2f}s")
 
             last_ts = start_ts
             start_ts = time.time_ns()
@@ -496,10 +544,10 @@ class WorkerManager(ServiceHost):
     def _on_iteration(self, timestamp: int) -> None:
         """Executes calls to the machine learning worker implementation to complete
         the inference pipeline"""
-        print(f"{timestamp} executing worker manager pipeline")
+        logger.debug(f"{timestamp} executing worker manager pipeline")
 
         if self.upstream_queue is None:
-            print("No queue to check for tasks")
+            logger.warning("No queue to check for tasks")
             return
 
         msg: bytes = self.upstream_queue.get()
@@ -584,10 +632,11 @@ def mock_work(worker_manager_queue: "mp.Queue[bytes]") -> None:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(filename="workermanager.log")
+    # queue for communicating to the worker manager. used to
+    # simulate messages "from the application"
+    upstream_queue: "mp.Queue[bytes]" = mp.Queue()
 
-    upstream_queue: "mp.Queue[bytes]" = (
-        mp.Queue()
-    )  # the incoming messages from application
     # downstream_queue = mp.Queue()  # the queue to forward messages to a given worker
 
     # torch_worker = TorchWorker(downstream_queue)
@@ -611,4 +660,4 @@ if __name__ == "__main__":
     # process.join()
 
     # msg_pump.kill()
-    print(f"{DefaultTorchWorker.backend()=}")
+    logger.info(f"{DefaultTorchWorker.backend()=}")
