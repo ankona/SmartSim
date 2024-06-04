@@ -233,9 +233,6 @@ class MachineLearningWorkerCore:
             raise NotImplementedError("Batching is not yet supported")
         return []
 
-    # todo: place_output is so awkward... why should client need to pass key type?
-    # that should be decided by the feature store. fix it.
-
     @staticmethod
     def place_output(
         raw_keys: t.Collection[str],
@@ -362,6 +359,8 @@ class DefaultTorchWorker(MachineLearningWorkerBase):
 
     @staticmethod
     def backend() -> str:
+        """A string representing the machine learning backend that will be used
+        to execute inference (e.g. PyTorch, Tensorflow, ONNX)"""
         return "PyTorch"
 
 
@@ -377,21 +376,34 @@ class ServiceHost(ABC):
         before shutdown"""
 
     @abstractmethod
-    def _on_iteration(self, timestamp: int) -> None: ...
+    def _on_iteration(self, timestamp: int) -> None:
+        """The user-defined event handler. Executed repeatedly until shutdown
+        conditions are satisfied and cooldown is elapsed.
+        """
 
     @abstractmethod
-    def _can_shutdown(self) -> bool: ...
+    def _can_shutdown(self) -> bool:
+        """Return true when the criteria to shut down the service are met."""
 
     def _on_start(self) -> None:
+        """Empty hook method for use by subclasses. Called on initial entry into
+        ServiceHost `execute` event loop before `_on_iteration` is invoked."""
         print(f"Starting {self.__class__.__name__}")
 
     def _on_shutdown(self) -> None:
+        """Empty hook method for use by subclasses. Called immediately after exiting
+        the main event loop during automatic shutdown."""
         print(f"Shutting down {self.__class__.__name__}")
 
     def _on_cooldown(self) -> None:
+        """Empty hook method for use by subclasses. Called on every event loop
+        iteration immediately upon exceeding the cooldown period"""
         print(f"Cooldown exceeded by {self.__class__.__name__}")
 
-    def execute(self) -> None:  # , work_queue: mp.Queue) -> None:
+    def execute(self) -> None:
+        """The main event loop of a service host. Evaluates shutdown criteria and
+        combines with a cooldown period to allow automatic service termination.
+        Responsible for executing calls to subclass implementation of `_on_iteration`"""
         self._on_start()
 
         start_ts = time.time_ns()
@@ -450,6 +462,7 @@ class WorkerManager(ServiceHost):
         cooldown: int = 0,
         batch_size: int = 0,
     ) -> None:
+        """Initialize the WorkerManager"""
         super().__init__(as_service, cooldown)
 
         self._workers: t.Dict[
@@ -467,17 +480,22 @@ class WorkerManager(ServiceHost):
 
     @property
     def upstream_queue(self) -> "t.Optional[mp.Queue[bytes]]":
+        """Return the queue used by the worker manager to receive new work"""
         return self._upstream_queue
 
     @upstream_queue.setter
     def upstream_queue(self, value: "mp.Queue[bytes]") -> None:
+        """Set/update the queue used by the worker manager to receive new work"""
         self._upstream_queue = value
 
     @property
     def batch_size(self) -> int:
+        """Returns the maximum size of a batch to be sent to a worker"""
         return self._batch_size
 
     def _on_iteration(self, timestamp: int) -> None:
+        """Executes calls to the machine learning worker implementation to complete
+        the inference pipeline"""
         print(f"{timestamp} executing worker manager pipeline")
 
         if self.upstream_queue is None:
@@ -519,15 +537,19 @@ class WorkerManager(ServiceHost):
             callback_channel.send(serialized_output)
 
     def _can_shutdown(self) -> bool:
+        """Return true when the criteria to shut down the service are met."""
         return bool(self._workers)
 
     def add_worker(
         self, worker: MachineLearningWorkerBase, work_queue: "mp.Queue[bytes]"
     ) -> None:
+        """Add a worker instance to the collection managed by the WorkerManager"""
         self._workers[worker.backend()] = (worker, work_queue)
 
 
 def mock_work(worker_manager_queue: "mp.Queue[bytes]") -> None:
+    """Mock event producer for triggering the inference pipeline"""
+    # todo: move to unit tests
     while True:
         time.sleep(1)
         # 1. for demo, ignore upstream and just put stuff into downstream
