@@ -16,7 +16,6 @@ from smartsim.log import get_logger
 if t.TYPE_CHECKING:
     import dragon.channels as dch
 
-_Datum = t.Union[torch.Tensor]
 logger = get_logger(__name__)
 
 
