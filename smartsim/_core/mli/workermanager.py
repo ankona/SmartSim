@@ -447,7 +447,6 @@ class SampleTorchWorker(MachineLearningWorkerBase):
         execute_result = ExecuteResult(results)
         return execute_result
 
-    # todo: ask team if we should always do in-place to avoid copying everything
     @staticmethod
     def transform_output(
         request: InferenceRequest,
