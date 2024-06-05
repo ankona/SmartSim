@@ -18,6 +18,47 @@ is_dragon = pytest.test_launcher == "dragon"
 torch_available = "torch" in installed_redisai_backends()
 
 
+class FileSystemFeatureStore(mli.FeatureStore):
+    """Alternative feature store implementation for testing. Stores all
+    data on the file system"""
+
+    def __init__(self, storage_dir: t.Optional[pathlib.Path] = None) -> None:
+        """Initialize the FileSystemFeatureStore instance
+        :param storage_dir: (optional) root directory to store all data relative to"""
+        self._storage_dir = storage_dir
+
+    def __getitem__(self, key: str) -> bytes:
+        """Retrieve an item using key
+        :param key: Unique key of an item to retrieve from the feature store"""
+        path = self._key_path(key)
+        if not path.exists():
+            raise sse.SmartSimError(f"{path} not found in feature store")
+        return path.read_bytes()
+
+    def __setitem__(self, key: str, value: bytes) -> None:
+        """Assign a value using key
+        :param key: Unique key of an item to set in the feature store
+        :param value: Value to persist in the feature store"""
+        path = self._key_path(key)
+        path.write_bytes(value)
+
+    def __contains__(self, key: str) -> bool:
+        """Membership operator to test for a key existing within the feature store.
+        Return `True` if the key is found, `False` otherwise
+        :param key: Unique key of an item to retrieve from the feature store"""
+        path = self._key_path(key)
+        return path.exists()
+
+    def _key_path(self, key: str) -> pathlib.Path:
+        """Given a key, return a path that is optionally combined with a base
+        directory used by the FileSystemFeatureStore.
+        :param key: Unique key of an item to retrieve from the feature store"""
+        if self._storage_dir:
+            return self._storage_dir / key
+
+        return pathlib.Path(key)
+
+
 @pytest.fixture
 def persist_model_file(test_dir: str) -> pathlib.Path:
     ts_start = time.time_ns()
@@ -55,7 +96,7 @@ def test_fetch_model_disk(persist_model_file: pathlib.Path) -> None:
     when given a valid (file system) key"""
     worker = mli.MachineLearningWorkerCore
     key = str(persist_model_file)
-    feature_store = mli.FileSystemFeatureStore()
+    feature_store = FileSystemFeatureStore()
     feature_store[str(persist_model_file)] = persist_model_file.read_bytes()
 
     request = mli.InferenceRequest(model_key=key)
@@ -69,7 +110,7 @@ def test_fetch_model_disk_missing() -> None:
     """Verify that the ML worker fails to retrieves a model
     when given an invalid (file system) key"""
     worker = mli.MachineLearningWorkerCore
-    feature_store = mli.FileSystemFeatureStore()
+    feature_store = mli.MemoryFeatureStore()
 
     key = "/path/that/doesnt/exist"
 

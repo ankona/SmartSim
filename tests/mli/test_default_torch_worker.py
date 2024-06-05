@@ -40,7 +40,7 @@ def persist_model_file(test_dir: str) -> pathlib.Path:
 def test_deserialize() -> None:
     """Verify that serialized requests are properly deserialized to
     and converted to the internal representation used by ML workers"""
-    worker = mli.DefaultTorchWorker
+    worker = mli.SampleTorchWorker
     buffer = io.BytesIO()
 
     # exp_backend = "TestBackend"
@@ -56,7 +56,7 @@ def test_deserialize() -> None:
 
 def test_load_model_from_disk(persist_model_file: pathlib.Path) -> None:
     """Verify that a model can be loaded using a FileSystemFeatureStore"""
-    worker = mli.DefaultTorchWorker
+    worker = mli.SampleTorchWorker
     request = mli.InferenceRequest(raw_model=persist_model_file.read_bytes())
 
     load_result = worker.load_model(request)
@@ -83,9 +83,9 @@ def test_transform_input() -> None:
         inputs.append(buffer.getvalue())
 
     fetch_result = mli.InputFetchResult(inputs)
-    worker = mli.DefaultTorchWorker
+    worker = mli.SampleTorchWorker
     result = worker.transform_input(request, fetch_result)
-    transformed: t.Collection[torch.Tensor] = result.transformed_input
+    transformed: t.Collection[torch.Tensor] = result.transformed
 
     assert len(transformed) == num_values
 
@@ -111,7 +111,7 @@ def test_execute_model(persist_model_file: pathlib.Path) -> None:
     feature_store = mli.MemoryFeatureStore()
     feature_store[model_name] = persist_model_file.read_bytes()
 
-    worker = mli.DefaultTorchWorker
+    worker = mli.SampleTorchWorker
     request = mli.InferenceRequest(model_key=model_name)
     request.raw_model = persist_model_file.read_bytes()
     load_result = worker.load_model(request)
@@ -134,7 +134,7 @@ def test_execute_missing_model(persist_model_file: pathlib.Path) -> None:
     feature_store = mli.MemoryFeatureStore()
     feature_store[model_name] = persist_model_file.read_bytes()
 
-    worker = mli.DefaultTorchWorker
+    worker = mli.SampleTorchWorker
     request = mli.InferenceRequest(input_keys=[model_name])
 
     load_result = mli.ModelLoadResult(None)
@@ -156,21 +156,22 @@ def test_transform_output() -> None:
     inputs = [torch.randn((rows, cols)) for _ in range(num_values)]
     exp_outputs = [torch.Tensor(tensor) for tensor in inputs]
 
-    worker = mli.DefaultTorchWorker
+    worker = mli.SampleTorchWorker
     request = mli.InferenceRequest()
     exec_result = mli.ExecuteResult(inputs)
 
-    transformed: t.Collection[torch.Tensor] = worker.transform_output(
+    result = worker.transform_output(
         request, exec_result
     )
+    # transform_result = mli.InputTransformResult(transformed)
 
-    assert len(transformed) == num_values
+    assert len(result.outputs) == num_values
 
-    for output, expected in zip(transformed, exp_outputs):
+    for output, expected in zip(result.outputs, exp_outputs):
         assert output.shape == expected.shape
         assert output.equal(expected)
 
-    transformed = list(transformed)
+    transformed = list(result.outputs)
 
     # verify a copy was made
     original: torch.Tensor = inputs[0]
