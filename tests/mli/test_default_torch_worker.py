@@ -29,12 +29,12 @@ def persist_model_file(test_dir: str) -> pathlib.Path:
     return model_path
 
 
-def test_backend() -> None:
-    """Verify that the worker advertises a backend that it works with"""
-    worker = mli.DefaultTorchWorker
+# def test_backend() -> None:
+#     """Verify that the worker advertises a backend that it works with"""
+#     worker = mli.DefaultTorchWorker
 
-    exp_backend = "PyTorch"
-    assert worker.backend() == exp_backend
+#     exp_backend = "PyTorch"
+#     assert worker.backend() == exp_backend
 
 
 def test_deserialize() -> None:
@@ -43,70 +43,26 @@ def test_deserialize() -> None:
     worker = mli.DefaultTorchWorker
     buffer = io.BytesIO()
 
-    exp_backend = "TestBackend"
-    exp_value = b"test-value"
-    msg = mli.InferenceRequest(exp_backend, value=exp_value)
+    # exp_backend = "TestBackend"
+    exp_model_key = "model-key"
+    msg = mli.InferenceRequest(model_key=exp_model_key)
     pickle.dump(msg, buffer)
 
     deserialized: mli.InferenceRequest = worker.deserialize(buffer.getvalue())
 
-    assert deserialized.value == exp_value
-    assert deserialized.backend == exp_backend
+    assert deserialized.model_key == exp_model_key
+    # assert deserialized.backend == exp_backend
 
 
 def test_load_model_from_disk(persist_model_file: pathlib.Path) -> None:
     """Verify that a model can be loaded using a FileSystemFeatureStore"""
     worker = mli.DefaultTorchWorker
+    request = mli.InferenceRequest(raw_model=persist_model_file.read_bytes())
 
-    feature_store = mli.FileSystemFeatureStore()
-    feature_store[str(persist_model_file)] = persist_model_file.read_bytes()
-    model_ref = mli.MachineLearningModelRef(
-        worker.backend(), feature_store, str(persist_model_file)
-    )
-
-    model = worker.load_model(model_ref)
+    load_result = worker.load_model(request)
 
     input = torch.randn(2)
-    pred = model(input)
-
-    assert pred
-
-
-def test_load_model_from_memory(persist_model_file: pathlib.Path) -> None:
-    """Verify that a model can be loaded using a MemoryKey"""
-
-    # put model bytes into feature store
-    model_name = "test-key"
-    feature_store = mli.MemoryFeatureStore()
-    feature_store[model_name] = persist_model_file.read_bytes()
-
-    worker = mli.DefaultTorchWorker
-    model_ref = mli.MachineLearningModelRef(worker.backend(), feature_store, model_name)
-
-    model = worker.load_model(model_ref)
-
-    input = torch.randn(2)
-    pred = model(input)
-
-    assert pred
-
-
-# @pytest.mark.skipif(not is_dragon, reason="Test is only for Dragon WLM systems")
-def test_load_model_from_dragon(persist_model_file: pathlib.Path) -> None:
-    """Verify that a model can be loaded using a key ref to dragon feature store"""
-
-    model_name = "test-model"
-    # todo: use _real_ DragonDict instead of mock & re-enable skipif
-    feature_store = mli.DragonFeatureStore(mli.DragonDict())
-    feature_store[model_name] = persist_model_file.read_bytes()
-
-    worker = mli.DefaultTorchWorker
-    model_ref = mli.MachineLearningModelRef(worker.backend(), feature_store, model_name)
-
-    model = worker.load_model(model_ref)
-
-    input = torch.randn(2)
-    pred = model(input)
+    pred = load_result.model(input)
 
     assert pred
 
@@ -118,6 +74,8 @@ def test_transform_input() -> None:
     num_values = 7
     tensors = [torch.randn((rows, cols)) for _ in range(num_values)]
 
+    request = mli.InferenceRequest()
+
     inputs: t.List[bytes] = []
     for tensor in tensors:
         buffer = io.BytesIO()
@@ -125,7 +83,7 @@ def test_transform_input() -> None:
         inputs.append(buffer.getvalue())
 
     worker = mli.DefaultTorchWorker
-    transformed: t.Collection[torch.Tensor] = worker.transform_input(inputs)
+    transformed: t.Collection[torch.Tensor] = worker.transform_input(request, inputs)
 
     assert len(transformed) == num_values
 
@@ -152,10 +110,12 @@ def test_execute_model(persist_model_file: pathlib.Path) -> None:
     feature_store[model_name] = persist_model_file.read_bytes()
 
     worker = mli.DefaultTorchWorker
-    model_ref = mli.MachineLearningModelRef(worker.backend(), feature_store, model_name)
+    request = mli.InferenceRequest(model_key=model_name)
+    request.raw_model = persist_model_file.read_bytes()
+    load_result = worker.load_model(request)
 
     input = torch.randn(2)
-    pred = worker.execute(model_ref, [input])
+    pred = worker.execute(request, load_result, [input])
 
     assert pred
 
@@ -171,14 +131,16 @@ def test_execute_missing_model(persist_model_file: pathlib.Path) -> None:
     feature_store[model_name] = persist_model_file.read_bytes()
 
     worker = mli.DefaultTorchWorker
-    model_ref = mli.MachineLearningModelRef(
-        worker.backend(), feature_store, model_name + "not_there"
-    )
+    request = mli.InferenceRequest(input_keys=[model_name])
+
+    load_result = mli.ModelLoadResult(None)
 
     with pytest.raises(sse.SmartSimError) as ex:
-        model_ref.model()
+        worker.execute(
+            request, load_result, [torch.randn(2), torch.randn(2), torch.randn(2)]
+        )
 
-    assert model_name in ex.value.args[0]
+    assert "Model must be loaded" in ex.value.args[0]
 
 
 @pytest.mark.skipif(not torch_available, reason="Torch backend is not installed")
@@ -190,7 +152,9 @@ def test_transform_output() -> None:
     exp_outputs = [torch.Tensor(tensor) for tensor in inputs]
 
     worker = mli.DefaultTorchWorker
-    transformed: t.Collection[torch.Tensor] = worker.transform_output(inputs)
+    request = mli.InferenceRequest()
+
+    transformed: t.Collection[torch.Tensor] = worker.transform_output(request, inputs)
 
     assert len(transformed) == num_values
 

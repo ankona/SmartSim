@@ -129,11 +129,15 @@ def test_fetch_model_memory(persist_model_file: pathlib.Path) -> None:
 def test_fetch_input_disk(persist_tensor_file: pathlib.Path) -> None:
     """Verify that the ML worker successfully retrieves a tensor/input
     when given a valid (file system) key"""
-    worker = mli.MachineLearningWorkerCore
-    feature_store = mli.MemoryFeatureStore()
-    feature_store[str(persist_tensor_file)] = persist_tensor_file.read_bytes()
+    tensor_name = str(persist_tensor_file)
 
-    raw_bytes = worker.fetch_inputs([str(persist_tensor_file)], feature_store)
+    request = mli.InferenceRequest(input_keys=[tensor_name])
+    worker = mli.MachineLearningWorkerCore
+
+    feature_store = mli.MemoryFeatureStore()
+    feature_store[tensor_name] = persist_tensor_file.read_bytes()
+
+    raw_bytes = worker.fetch_inputs(request, feature_store)
     assert raw_bytes
 
 
@@ -142,15 +146,17 @@ def test_fetch_input_disk_missing() -> None:
     when given an invalid (file system) key"""
     worker = mli.MachineLearningWorkerCore
 
-    bad_key_path = pathlib.Path("/path/that/doesnt/exist")
+    key = "/path/that/doesnt/exist"
     feature_store = mli.MemoryFeatureStore()
+
+    request = mli.InferenceRequest(input_keys=[key])
 
     # todo: consider that raising this exception shows impl. replace...
     with pytest.raises(sse.SmartSimError) as ex:
-        worker.fetch_inputs([str(bad_key_path)], feature_store)
+        worker.fetch_inputs(request, feature_store)
 
     # ensure the error message includes key-identifying information
-    assert str(bad_key_path) in ex.value.args[0]
+    assert key in ex.value.args[0]
 
 
 def test_fetch_input_feature_store(persist_tensor_file: pathlib.Path) -> None:
@@ -161,13 +167,15 @@ def test_fetch_input_feature_store(persist_tensor_file: pathlib.Path) -> None:
     tensor_name = "test-tensor"
     feature_store = mli.MemoryFeatureStore()
 
+    request = mli.InferenceRequest(input_keys=[tensor_name])
+
     # todo: consider if this abstraction as reversed. should the FS instead give
     # out keys instead of giving an FS to the key?
 
     # put model bytes into the feature store
     feature_store[tensor_name] = persist_tensor_file.read_bytes()
 
-    raw_bytes = worker.fetch_inputs([tensor_name], feature_store)
+    raw_bytes = worker.fetch_inputs(request, feature_store)
     assert raw_bytes
     assert list(raw_bytes)[0][:10] == persist_tensor_file.read_bytes()[:10]
 
@@ -180,9 +188,6 @@ def test_fetch_multi_input_feature_store(persist_tensor_file: pathlib.Path) -> N
     tensor_name = "test-tensor"
     feature_store = mli.MemoryFeatureStore()
 
-    # todo: consider if this abstraction as reversed. should the FS instead give
-    # out keys instead of giving an FS to the key?
-
     # put model bytes into the feature store
     body1 = persist_tensor_file.read_bytes()
     feature_store[tensor_name + "1"] = body1
@@ -193,9 +198,11 @@ def test_fetch_multi_input_feature_store(persist_tensor_file: pathlib.Path) -> N
     body3 = b"mnopqrstuvwxyzabcdefghijkl"
     feature_store[tensor_name + "3"] = body3
 
-    raw_bytes = worker.fetch_inputs(
-        [tensor_name + "1", tensor_name + "2", tensor_name + "3"], feature_store
+    request = mli.InferenceRequest(
+        input_keys=[tensor_name + "1", tensor_name + "2", tensor_name + "3"]
     )
+
+    raw_bytes = worker.fetch_inputs(request, feature_store)
 
     raw_bytes = list(raw_bytes)
     assert raw_bytes
@@ -211,11 +218,11 @@ def test_fetch_input_feature_store_missing() -> None:
 
     bad_key = "some-key"
     feature_store = mli.MemoryFeatureStore()
-    # key = mli.FeatureStoreKey(bad_key, feature_store)
+    request = mli.InferenceRequest(input_keys=[bad_key])
 
     # todo: consider that raising this exception shows impl. replace...
     with pytest.raises(sse.SmartSimError) as ex:
-        worker.fetch_inputs([bad_key], feature_store)
+        worker.fetch_inputs(request, feature_store)
 
     # ensure the error message includes key-identifying information
     assert bad_key in ex.value.args[0]
@@ -229,8 +236,9 @@ def test_fetch_input_memory(persist_tensor_file: pathlib.Path) -> None:
 
     model_name = "test-model"
     feature_store[model_name] = persist_tensor_file.read_bytes()
+    request = mli.InferenceRequest(input_keys=[model_name])
 
-    raw_bytes = worker.fetch_inputs([model_name], feature_store)
+    raw_bytes = worker.fetch_inputs(request, feature_store)
     assert raw_bytes
 
 

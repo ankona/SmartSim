@@ -5,6 +5,7 @@ import pathlib
 import pickle
 import time
 import typing as t
+import uuid
 from abc import ABC, abstractmethod
 
 import torch
@@ -160,26 +161,26 @@ class CommChannel(ABC):
         raise NotImplementedError()
 
 
-class FileCommChannel(CommChannel):
-    """Passes messages by writing to a file persisted to disk"""
+# class FileCommChannel(CommChannel):
+#     """Passes messages by writing to a file persisted to disk"""
 
-    def __init__(self, path: pathlib.Path) -> None:
-        """Initialize the FileCommChannel instance"""
-        self._path: pathlib.Path = path
+#     def __init__(self, path: pathlib.Path) -> None:
+#         """Initialize the FileCommChannel instance"""
+#         self._path: pathlib.Path = path
 
-    def send(self, value: bytes) -> None:
-        """Write the supplied value to to the file specified as the channel"""
-        msg = f"Sending {value.decode('utf-8')} through file channel"
-        logger.debug(msg)
-        self._path.write_text(msg)
+#     def send(self, value: bytes) -> None:
+#         """Write the supplied value to to the file specified as the channel"""
+#         msg = f"Sending {value.decode('utf-8')} through file channel"
+#         logger.debug(msg)
+#         self._path.write_text(msg)
 
-    @classmethod
-    def find(cls, key: bytes) -> "CommChannel":
-        """Find a channel given its serialized key"""
-        path = pathlib.Path(key.decode("utf-8"))
-        if not path.exists():
-            path.touch()
-        return FileCommChannel(path)
+#     @classmethod
+#     def find(cls, key: bytes) -> "CommChannel":
+#         """Find a channel given its serialized key"""
+#         path = pathlib.Path(key.decode("utf-8"))
+#         if not path.exists():
+#             path.touch()
+#         return FileCommChannel(path)
 
 
 class DragonCommChannel(CommChannel):
@@ -199,18 +200,22 @@ class InferenceRequest:
 
     def __init__(
         self,
-        backend: t.Optional[str] = None,
-        model: t.Optional[MachineLearningModelRef] = None,
+        # backend: t.Optional[str] = None,
+        model_key: t.Optional[str] = None,
         callback: t.Optional[CommChannel] = None,
-        value: t.Optional[bytes] = None,
+        # value: t.Optional[bytes] = None,
+        raw_inputs: t.Optional[t.List[bytes]] = None,
         input_keys: t.Optional[t.List[str]] = None,
         output_keys: t.Optional[t.List[str]] = None,
+        raw_model: t.Optional[bytes] = None,
     ):
         """Initialize the InferenceRequest"""
-        self.backend = backend
-        self.model = model
+        # self.backend = backend
+        self.model_key = model_key
+        self.raw_model = raw_model
         self.callback = callback
-        self.value = value
+        # self.value = value
+        self.raw_inputs = raw_inputs
         self.input_keys = input_keys or []
         self.output_keys = output_keys or []
 
@@ -226,6 +231,25 @@ class InferenceReply:
         """Initialize the InferenceReply"""
         self.outputs: t.Collection[bytes] = outputs or []
         self.output_keys: t.Collection[t.Optional[str]] = output_keys or []
+
+
+# TFetched = t.TypeVar("TFetched")
+# # TFetched = t.TypeVar("TFetched")
+
+
+# class ModelFetchResponse(t.Generic[TFetched]):
+#     def __init__(self, fetched: TFetched) -> None:
+#         self.fetched: TFetched = fetched
+
+
+# class InputFetchResponse(t.Generic[TFetched]):
+#     def __init__(self, fetched: TFetched) -> None:
+#         self.fetched: TFetched = fetched
+
+
+class ModelLoadResult:
+    def __init__(self, model: t.Any) -> None:
+        self.model = model
 
 
 class MachineLearningWorkerCore:
@@ -244,7 +268,7 @@ class MachineLearningWorkerCore:
 
     @staticmethod
     def fetch_inputs(
-        inputs: t.Collection[str], feature_store: FeatureStore
+        request: InferenceRequest, feature_store: FeatureStore
     ) -> t.Collection[bytes]:
         """Given a collection of ResourceKeys, identify the physical location
         and input metadata
@@ -254,17 +278,23 @@ class MachineLearningWorkerCore:
 
         :return: Raw bytes identified by the given keys when found, otherwise `None`
         """
-        data: t.List[bytes] = []
-        for input_ in inputs:
-            try:
-                tensor_bytes = feature_store[input_]
-                data.append(tensor_bytes)
-            except KeyError as ex:
-                logger.exception(ex)
-                raise sse.SmartSimError(
-                    f"Model could not be retrieved with key {input_}"
-                ) from ex
-        return data
+        if request.input_keys:
+            data: t.List[bytes] = []
+            for input_ in request.input_keys:
+                try:
+                    tensor_bytes = feature_store[input_]
+                    data.append(tensor_bytes)
+                except KeyError as ex:
+                    logger.exception(ex)
+                    raise sse.SmartSimError(
+                        f"Model could not be retrieved with key {input_}"
+                    ) from ex
+            return data
+
+        if request.raw_inputs:
+            return request.raw_inputs
+
+        raise ValueError("No input source")
 
     @staticmethod
     def batch_requests(
@@ -309,7 +339,7 @@ class MachineLearningWorkerBase(MachineLearningWorkerCore, ABC):
 
     @staticmethod
     @abstractmethod
-    def load_model(model_ref: t.Optional[MachineLearningModelRef]) -> t.Any:
+    def load_model(request: InferenceRequest) -> ModelLoadResult:
         # model: MLMLocator? something that doesn't say "I am actually the model"
         """Given a loaded MachineLearningModel, ensure it is loaded into
         device memory"""
@@ -318,6 +348,7 @@ class MachineLearningWorkerBase(MachineLearningWorkerCore, ABC):
     @staticmethod
     @abstractmethod
     def transform_input(
+        request: InferenceRequest,
         data: t.Collection[bytes],
     ) -> t.Collection[_Datum]:
         """Given a collection of data, perform a transformation on the data"""
@@ -325,7 +356,10 @@ class MachineLearningWorkerBase(MachineLearningWorkerCore, ABC):
     @staticmethod
     @abstractmethod
     def execute(
-        model_ref: MachineLearningModelRef, data: t.Collection[_Datum]
+        request: InferenceRequest,
+        # model_ref: MachineLearningModelRef,
+        load_result: ModelLoadResult,
+        data: t.Collection[_Datum],
     ) -> t.Collection[bytes]:
         """Execute an ML model on the given inputs"""
 
@@ -334,6 +368,7 @@ class MachineLearningWorkerBase(MachineLearningWorkerCore, ABC):
     def transform_output(
         # TODO: ask Al about assumption that "if i put in tensors, i will get out
         # tensors. my generic probably fails here."
+        request: InferenceRequest,
         data: t.Collection[_Datum],
     ) -> t.Collection[_Datum]:
         """Given a collection of data, perform a transformation on the data"""
@@ -342,10 +377,6 @@ class MachineLearningWorkerBase(MachineLearningWorkerCore, ABC):
     @abstractmethod
     def serialize_reply(reply: InferenceReply) -> bytes:
         """Given an output, serialize to bytes for transport"""
-
-    @staticmethod
-    @abstractmethod
-    def backend() -> str: ...
 
 
 class DefaultTorchWorker(MachineLearningWorkerBase):
@@ -359,21 +390,23 @@ class DefaultTorchWorker(MachineLearningWorkerBase):
         return request
 
     @staticmethod
-    def load_model(model_ref: t.Optional[MachineLearningModelRef]) -> torch.nn.Module:
+    def load_model(request: InferenceRequest) -> ModelLoadResult:
         # MLMLocator? something that doesn't say "I am actually the model"
         """Given a loaded MachineLearningModel, ensure it is loaded into
         device memory"""
-        if not model_ref:
+        if not request.raw_model:
             raise ValueError("Unable to load model without reference object")
 
         # invoke separate API functions to put the model on GPU/accelerator (if exists)
-        raw_bytes = model_ref.model()
+        raw_bytes = request.raw_model or b""  # todo: ???
         model_bytes = io.BytesIO(raw_bytes)
         model: torch.nn.Module = torch.load(model_bytes)
-        return model
+        result = ModelLoadResult(model)
+        return result
 
     @staticmethod
     def transform_input(
+        request: InferenceRequest,
         data: t.Collection[bytes],
     ) -> t.Collection[_Datum]:
         """Given a collection of data, perform a no-op, copy-only transform"""
@@ -382,17 +415,22 @@ class DefaultTorchWorker(MachineLearningWorkerBase):
 
     @staticmethod
     def execute(
-        model_ref: MachineLearningModelRef, data: t.Collection[_Datum]
+        request: InferenceRequest,
+        load_result: ModelLoadResult,
+        data: t.Collection[_Datum],
     ) -> t.Collection[bytes]:
         """Execute an ML model on the given inputs"""
-        # todo: shouldn't be reloading model. need to pass model in instead?
-        model = DefaultTorchWorker.load_model(model_ref)
+        if not load_result.model:
+            raise sse.SmartSimError("Model must be loaded to execute")
+
+        model = load_result.model
         results = [model(tensor) for tensor in data]
         return results
 
     # todo: ask team if we should always do in-place to avoid copying everything
     @staticmethod
     def transform_output(
+        request: InferenceRequest,
         data: t.Collection[_Datum],
         # TODO: ask Al about assumption that "if i put in tensors, i will get out
         # tensors. my generic probably fails here."
@@ -404,12 +442,6 @@ class DefaultTorchWorker(MachineLearningWorkerBase):
     def serialize_reply(reply: InferenceReply) -> bytes:
         """Given an output, serialize to bytes for transport"""
         return pickle.dumps(reply)
-
-    @staticmethod
-    def backend() -> str:
-        """A string representing the machine learning backend that will be used
-        to execute inference (e.g. PyTorch, Tensorflow, ONNX)"""
-        return "PyTorch"
 
 
 class ServiceHost(ABC):
@@ -554,18 +586,39 @@ class WorkerManager(ServiceHost):
 
         request = self._worker.deserialize(msg)
 
-        model = self._worker.load_model(request.model)
+        # request_ctx = RequestContext()
+        # self._worker.fetch_model(request_ctx)
+
+        # m = feature_store[key]
+        # split load model & fetch model
+        # load model is SPECIFICALLY load onto GPU, not from feature_store
+        model = self._worker.load_model(request)
+
         fetched_inputs = self._worker.fetch_inputs(
-            request.input_keys, self._feature_store
-        )
-        transformed_inputs = self._worker.transform_input(fetched_inputs)
+            request,
+            # request.input_keys, self._feature_store, request
+            self._feature_store,
+        )  # we don't know if they'lll fetch in some weird way
+        # they potentially need access to custom attributes
+        # we don't know what the response really is... i have it as bytes
+        # but we just want to advertise that the contract states "the output
+        # will be the input to transform_input... "
+
+        # a_resp = do_a()
+        # b_resp = do_b(a_resp)
+        # c_resp = do_c(b_resp)
+
+        # with Pool(4) as p:
+        # p.(worker.transform_input, fetch_inputs)
+        # p.start()
+        transformed_inputs = self._worker.transform_input(request, fetched_inputs)
 
         batch: t.Collection[_Datum] = transformed_inputs
         if self._batch_size:
             batch = self._worker.batch_requests(transformed_inputs, self._batch_size)
 
         # todo: what do we return here? tensors? Datum? bytes?
-        results = self._worker.execute(model, batch)
+        results = self._worker.execute(request, model, batch)
 
         reply = InferenceReply()
 
@@ -592,7 +645,7 @@ class WorkerManager(ServiceHost):
         self, worker: MachineLearningWorkerBase, work_queue: "mp.Queue[bytes]"
     ) -> None:
         """Add a worker instance to the collection managed by the WorkerManager"""
-        self._workers[worker.backend()] = (worker, work_queue)
+        self._workers[str(uuid.uuid4())] = (worker, work_queue)
 
 
 def mock_work(worker_manager_queue: "mp.Queue[bytes]") -> None:
@@ -616,6 +669,10 @@ def mock_work(worker_manager_queue: "mp.Queue[bytes]") -> None:
 
         msg = f"PyTorch:{mock_model}:MockInputToReplace:{mock_channel}"
         worker_manager_queue.put(msg.encode("utf-8"))
+
+
+# p = mp.Process(target=lambda: 1, args=(1, 2, 3))
+# p.start()
 
 
 # class ProcessingContext:
@@ -660,4 +717,4 @@ if __name__ == "__main__":
     # process.join()
 
     # msg_pump.kill()
-    logger.info(f"{DefaultTorchWorker.backend()=}")
+    # logger.info(f"{DefaultTorchWorker.backend()=}")
