@@ -83,7 +83,8 @@ def test_transform_input() -> None:
         inputs.append(buffer.getvalue())
 
     worker = mli.DefaultTorchWorker
-    transformed: t.Collection[torch.Tensor] = worker.transform_input(request, inputs)
+    result = worker.transform_input(request, inputs)
+    transformed: t.Collection[torch.Tensor] = result.transformed_input
 
     assert len(transformed) == num_values
 
@@ -114,10 +115,12 @@ def test_execute_model(persist_model_file: pathlib.Path) -> None:
     request.raw_model = persist_model_file.read_bytes()
     load_result = worker.load_model(request)
 
-    input = torch.randn(2)
-    pred = worker.execute(request, load_result, [input])
+    value = torch.randn(2)
+    transform_result = mli.InputTransformResult([value])
 
-    assert pred
+    execute_result = worker.execute(request, load_result, transform_result)
+
+    assert execute_result.predictions is not None
 
 
 def test_execute_missing_model(persist_model_file: pathlib.Path) -> None:
@@ -134,11 +137,12 @@ def test_execute_missing_model(persist_model_file: pathlib.Path) -> None:
     request = mli.InferenceRequest(input_keys=[model_name])
 
     load_result = mli.ModelLoadResult(None)
+    transform_result = mli.InputTransformResult(
+        [torch.randn(2), torch.randn(2), torch.randn(2)]
+    )
 
     with pytest.raises(sse.SmartSimError) as ex:
-        worker.execute(
-            request, load_result, [torch.randn(2), torch.randn(2), torch.randn(2)]
-        )
+        worker.execute(request, load_result, transform_result)
 
     assert "Model must be loaded" in ex.value.args[0]
 

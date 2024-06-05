@@ -161,28 +161,6 @@ class CommChannel(ABC):
         raise NotImplementedError()
 
 
-# class FileCommChannel(CommChannel):
-#     """Passes messages by writing to a file persisted to disk"""
-
-#     def __init__(self, path: pathlib.Path) -> None:
-#         """Initialize the FileCommChannel instance"""
-#         self._path: pathlib.Path = path
-
-#     def send(self, value: bytes) -> None:
-#         """Write the supplied value to to the file specified as the channel"""
-#         msg = f"Sending {value.decode('utf-8')} through file channel"
-#         logger.debug(msg)
-#         self._path.write_text(msg)
-
-#     @classmethod
-#     def find(cls, key: bytes) -> "CommChannel":
-#         """Find a channel given its serialized key"""
-#         path = pathlib.Path(key.decode("utf-8"))
-#         if not path.exists():
-#             path.touch()
-#         return FileCommChannel(path)
-
-
 class DragonCommChannel(CommChannel):
     """Passes messages by writing to a Dragon channel"""
 
@@ -200,21 +178,17 @@ class InferenceRequest:
 
     def __init__(
         self,
-        # backend: t.Optional[str] = None,
         model_key: t.Optional[str] = None,
         callback: t.Optional[CommChannel] = None,
-        # value: t.Optional[bytes] = None,
         raw_inputs: t.Optional[t.List[bytes]] = None,
         input_keys: t.Optional[t.List[str]] = None,
         output_keys: t.Optional[t.List[str]] = None,
         raw_model: t.Optional[bytes] = None,
     ):
         """Initialize the InferenceRequest"""
-        # self.backend = backend
         self.model_key = model_key
         self.raw_model = raw_model
         self.callback = callback
-        # self.value = value
         self.raw_inputs = raw_inputs
         self.input_keys = input_keys or []
         self.output_keys = output_keys or []
@@ -233,23 +207,19 @@ class InferenceReply:
         self.output_keys: t.Collection[t.Optional[str]] = output_keys or []
 
 
-# TFetched = t.TypeVar("TFetched")
-# # TFetched = t.TypeVar("TFetched")
-
-
-# class ModelFetchResponse(t.Generic[TFetched]):
-#     def __init__(self, fetched: TFetched) -> None:
-#         self.fetched: TFetched = fetched
-
-
-# class InputFetchResponse(t.Generic[TFetched]):
-#     def __init__(self, fetched: TFetched) -> None:
-#         self.fetched: TFetched = fetched
-
-
 class ModelLoadResult:
     def __init__(self, model: t.Any) -> None:
         self.model = model
+
+
+class InputTransformResult:
+    def __init__(self, result: t.Any) -> None:
+        self.transformed_input = result
+
+
+class ExecuteResult:
+    def __init__(self, result: t.Any) -> None:
+        self.predictions = result
 
 
 class MachineLearningWorkerCore:
@@ -298,7 +268,7 @@ class MachineLearningWorkerCore:
 
     @staticmethod
     def batch_requests(
-        data: t.Collection[_Datum], batch_size: int
+        transform_result: InputTransformResult, batch_size: int
     ) -> t.Collection[_Datum]:
         """Create a batch of requests. Return the batch when batch_size datum have been
         collected or a configured batch duration has elapsed.
@@ -307,14 +277,14 @@ class MachineLearningWorkerCore:
         :param batch_size: The maximum allowed batch size
 
         :return: `None` if batch size has not been reached and timeout not exceeded."""
-        if data or batch_size:
+        if transform_result is not None or batch_size:
             raise NotImplementedError("Batching is not yet supported")
         return []
 
     @staticmethod
     def place_output(
-        raw_keys: t.Collection[str],
-        data: t.Collection[bytes],
+        request: InferenceRequest,
+        execute_result: ExecuteResult,
         feature_store: FeatureStore,
         # need to know how to get back to original sub-batch inputs so they can be
         # accurately placed, datum might need to include this.
@@ -323,7 +293,7 @@ class MachineLearningWorkerCore:
         feature store"""
         keys: t.List[t.Optional[str]] = []
 
-        for k, v in zip(raw_keys, data):
+        for k, v in zip(request.output_keys, execute_result.predictions):
             feature_store[k] = v
             keys.append(k)
 
@@ -350,7 +320,7 @@ class MachineLearningWorkerBase(MachineLearningWorkerCore, ABC):
     def transform_input(
         request: InferenceRequest,
         data: t.Collection[bytes],
-    ) -> t.Collection[_Datum]:
+    ) -> InputTransformResult:
         """Given a collection of data, perform a transformation on the data"""
 
     @staticmethod
@@ -359,8 +329,9 @@ class MachineLearningWorkerBase(MachineLearningWorkerCore, ABC):
         request: InferenceRequest,
         # model_ref: MachineLearningModelRef,
         load_result: ModelLoadResult,
-        data: t.Collection[_Datum],
-    ) -> t.Collection[bytes]:
+        # data: t.Collection[_Datum],
+        transform_result: InputTransformResult,
+    ) -> ExecuteResult:
         """Execute an ML model on the given inputs"""
 
     @staticmethod
@@ -408,24 +379,27 @@ class DefaultTorchWorker(MachineLearningWorkerBase):
     def transform_input(
         request: InferenceRequest,
         data: t.Collection[bytes],
-    ) -> t.Collection[_Datum]:
+    ) -> InputTransformResult:
         """Given a collection of data, perform a no-op, copy-only transform"""
-        return [torch.load(io.BytesIO(item)) for item in data]
+        result = [torch.load(io.BytesIO(item)) for item in data]
+        return InputTransformResult(result)
         # return data # note: this fails copy test!
 
     @staticmethod
     def execute(
         request: InferenceRequest,
         load_result: ModelLoadResult,
-        data: t.Collection[_Datum],
-    ) -> t.Collection[bytes]:
+        transform_result: InputTransformResult,
+    ) -> ExecuteResult:
         """Execute an ML model on the given inputs"""
         if not load_result.model:
             raise sse.SmartSimError("Model must be loaded to execute")
 
         model = load_result.model
-        results = [model(tensor) for tensor in data]
-        return results
+        results = [model(tensor) for tensor in transform_result.transformed_input]
+
+        execute_result = ExecuteResult(results)
+        return execute_result
 
     # todo: ask team if we should always do in-place to avoid copying everything
     @staticmethod
@@ -592,7 +566,7 @@ class WorkerManager(ServiceHost):
         # m = feature_store[key]
         # split load model & fetch model
         # load model is SPECIFICALLY load onto GPU, not from feature_store
-        model = self._worker.load_model(request)
+        model_result = self._worker.load_model(request)
 
         fetched_inputs = self._worker.fetch_inputs(
             request,
@@ -611,25 +585,25 @@ class WorkerManager(ServiceHost):
         # with Pool(4) as p:
         # p.(worker.transform_input, fetch_inputs)
         # p.start()
-        transformed_inputs = self._worker.transform_input(request, fetched_inputs)
+        transform_result = self._worker.transform_input(request, fetched_inputs)
 
-        batch: t.Collection[_Datum] = transformed_inputs
-        if self._batch_size:
-            batch = self._worker.batch_requests(transformed_inputs, self._batch_size)
+        # batch: t.Collection[_Datum] = transform_result.transformed_input
+        # if self._batch_size:
+        #     batch = self._worker.batch_requests(transform_result, self._batch_size)
 
         # todo: what do we return here? tensors? Datum? bytes?
-        results = self._worker.execute(request, model, batch)
+        results = self._worker.execute(request, model_result, transform_result)
 
         reply = InferenceReply()
 
         # only place into feature store if keys are provided
         if request.output_keys:
             output_keys = self._worker.place_output(
-                request.output_keys, results, self._feature_store
+                request, results, self._feature_store
             )
             reply.output_keys = output_keys
         else:
-            reply.outputs = results
+            reply.outputs = results.predictions
 
         serialized_output = self._worker.serialize_reply(reply)
 
