@@ -129,24 +129,6 @@ class DragonFeatureStore(FeatureStore):
         return key in self._storage
 
 
-class MachineLearningModelRef:
-    def __init__(
-        self, backend: str, feature_store: FeatureStore, key: t.Optional[str] = None
-    ) -> None:
-        self._backend = backend
-        self._key = key
-        self._feature_store = feature_store
-
-    def model(self) -> bytes:
-        if not self._key:
-            raise ValueError("Key not set")
-        return self._feature_store[self._key]
-
-    @property
-    def backend(self) -> str:
-        return self._backend
-
-
 class CommChannel(ABC):
     """Base class for abstracting a message passing mechanism"""
 
@@ -335,9 +317,7 @@ class MachineLearningWorkerBase(MachineLearningWorkerCore, ABC):
     @abstractmethod
     def execute(
         request: InferenceRequest,
-        # model_ref: MachineLearningModelRef,
         load_result: ModelLoadResult,
-        # data: t.Collection[_Datum],
         transform_result: InputTransformResult,
     ) -> ExecuteResult:
         """Execute an ML model on the given inputs"""
@@ -345,10 +325,8 @@ class MachineLearningWorkerBase(MachineLearningWorkerCore, ABC):
     @staticmethod
     @abstractmethod
     def transform_output(
-        # TODO: ask Al about assumption that "if i put in tensors, i will get out
-        # tensors. my generic probably fails here."
         request: InferenceRequest,
-        data: t.Collection[_Datum],
+        execute_result: ExecuteResult,
     ) -> t.Collection[_Datum]:
         """Given a collection of data, perform a transformation on the data"""
 
@@ -413,12 +391,12 @@ class DefaultTorchWorker(MachineLearningWorkerBase):
     @staticmethod
     def transform_output(
         request: InferenceRequest,
-        data: t.Collection[_Datum],
+        execute_result: ExecuteResult,
         # TODO: ask Al about assumption that "if i put in tensors, i will get out
         # tensors. my generic probably fails here."
     ) -> t.Collection[_Datum]:
         """Given a collection of data, perform a no-op, copy-only transform"""
-        return [item.clone() for item in data]
+        return [item.clone() for item in execute_result.predictions]
 
     @staticmethod
     def serialize_reply(reply: InferenceReply) -> bytes:

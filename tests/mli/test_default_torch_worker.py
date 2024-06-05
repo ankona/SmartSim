@@ -157,8 +157,11 @@ def test_transform_output() -> None:
 
     worker = mli.DefaultTorchWorker
     request = mli.InferenceRequest()
+    exec_result = mli.ExecuteResult(inputs)
 
-    transformed: t.Collection[torch.Tensor] = worker.transform_output(request, inputs)
+    transformed: t.Collection[torch.Tensor] = worker.transform_output(
+        request, exec_result
+    )
 
     assert len(transformed) == num_values
 
