@@ -245,11 +245,12 @@ def test_fetch_input_memory(persist_tensor_file: pathlib.Path) -> None:
 def test_batch_requests() -> None:
     """Verify batch requests handles an empty data set gracefully"""
     worker = mli.MachineLearningWorkerCore
+    result = mli.InputTransformResult([])
 
     with pytest.raises(NotImplementedError):
         # NOTE: we expect this to fail since it's not yet implemented.
         # TODO: once implemented, replace this expectation of failure...
-        worker.batch_requests([], 10)
+        worker.batch_requests(result, 10)
 
 
 def test_place_outputs() -> None:
@@ -260,14 +261,17 @@ def test_place_outputs() -> None:
     feature_store = mli.MemoryFeatureStore()
 
     # create a key to retrieve from the feature store
-    keys = key_name + "1", key_name + "2", key_name + "3"
-    data = b"abcdef", b"ghijkl", b"mnopqr"
+    keys = [key_name + "1", key_name + "2", key_name + "3"]
+    data = [b"abcdef", b"ghijkl", b"mnopqr"]
 
     for k, v in zip(keys, data):
         feature_store[k] = v
 
-    output_keys = worker.place_output(keys, data, feature_store)
-    assert len(output_keys) == len(keys)
+    request = mli.InferenceRequest(output_keys=keys)
+    execute_result = mli.ExecuteResult(data)
+
+    worker.place_output(request, execute_result, feature_store)
+    # assert len(output_keys) == len(keys)
 
     for i in range(3):
         assert feature_store[keys[i]] == data[i]
