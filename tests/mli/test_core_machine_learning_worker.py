@@ -1,4 +1,3 @@
-import io
 import pathlib
 import time
 import typing as t
@@ -101,9 +100,9 @@ def test_fetch_model_disk(persist_model_file: pathlib.Path) -> None:
 
     request = mli.InferenceRequest(model_key=key)
 
-    raw_bytes = worker.fetch_model(request, feature_store)
-    assert raw_bytes
-    assert raw_bytes == persist_model_file.read_bytes()
+    fetch_result = worker.fetch_model(request, feature_store)
+    assert fetch_result.model_bytes
+    assert fetch_result.model_bytes == persist_model_file.read_bytes()
 
 
 def test_fetch_model_disk_missing() -> None:
@@ -116,7 +115,6 @@ def test_fetch_model_disk_missing() -> None:
 
     request = mli.InferenceRequest(model_key=key)
 
-    # todo: consider that raising this exception shows impl. replace...
     with pytest.raises(sse.SmartSimError) as ex:
         worker.fetch_model(request, feature_store)
 
@@ -137,9 +135,9 @@ def test_fetch_model_feature_store(persist_model_file: pathlib.Path) -> None:
     feature_store[key] = persist_model_file.read_bytes()
 
     request = mli.InferenceRequest(model_key=key)
-    raw_bytes = worker.fetch_model(request, feature_store)
-    assert raw_bytes
-    assert raw_bytes == persist_model_file.read_bytes()
+    fetch_result = worker.fetch_model(request, feature_store)
+    assert fetch_result.model_bytes
+    assert fetch_result.model_bytes == persist_model_file.read_bytes()
 
 
 def test_fetch_model_feature_store_missing() -> None:
@@ -171,9 +169,9 @@ def test_fetch_model_memory(persist_model_file: pathlib.Path) -> None:
 
     request = mli.InferenceRequest(model_key=key)
 
-    raw_bytes = worker.fetch_model(request, feature_store)
-    assert raw_bytes
-    assert raw_bytes == persist_model_file.read_bytes()
+    fetch_result = worker.fetch_model(request, feature_store)
+    assert fetch_result.model_bytes
+    assert fetch_result.model_bytes == persist_model_file.read_bytes()
 
 
 def test_fetch_input_disk(persist_tensor_file: pathlib.Path) -> None:
@@ -218,9 +216,6 @@ def test_fetch_input_feature_store(persist_tensor_file: pathlib.Path) -> None:
     feature_store = mli.MemoryFeatureStore()
 
     request = mli.InferenceRequest(input_keys=[tensor_name])
-
-    # todo: consider if this abstraction as reversed. should the FS instead give
-    # out keys instead of giving an FS to the key?
 
     # put model bytes into the feature store
     feature_store[tensor_name] = persist_tensor_file.read_bytes()
@@ -323,7 +318,6 @@ def test_place_outputs() -> None:
     execute_result = mli.ExecuteResult(data)
 
     worker.place_output(request, execute_result, feature_store)
-    # assert len(output_keys) == len(keys)
 
     for i in range(3):
         assert feature_store[keys[i]] == data[i]

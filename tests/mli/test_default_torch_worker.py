@@ -29,21 +29,12 @@ def persist_model_file(test_dir: str) -> pathlib.Path:
     return model_path
 
 
-# def test_backend() -> None:
-#     """Verify that the worker advertises a backend that it works with"""
-#     worker = mli.DefaultTorchWorker
-
-#     exp_backend = "PyTorch"
-#     assert worker.backend() == exp_backend
-
-
 def test_deserialize() -> None:
     """Verify that serialized requests are properly deserialized to
     and converted to the internal representation used by ML workers"""
     worker = mli.SampleTorchWorker
     buffer = io.BytesIO()
 
-    # exp_backend = "TestBackend"
     exp_model_key = "model-key"
     msg = mli.InferenceRequest(model_key=exp_model_key)
     pickle.dump(msg, buffer)
@@ -59,7 +50,8 @@ def test_load_model_from_disk(persist_model_file: pathlib.Path) -> None:
     worker = mli.SampleTorchWorker
     request = mli.InferenceRequest(raw_model=persist_model_file.read_bytes())
 
-    load_result = worker.load_model(request)
+    fetch_result = mli.FetchModelResult(persist_model_file.read_bytes())
+    load_result = worker.load_model(request, fetch_result)
 
     input = torch.randn(2)
     pred = load_result.model(input)
@@ -113,8 +105,8 @@ def test_execute_model(persist_model_file: pathlib.Path) -> None:
 
     worker = mli.SampleTorchWorker
     request = mli.InferenceRequest(model_key=model_name)
-    request.raw_model = persist_model_file.read_bytes()
-    load_result = worker.load_model(request)
+    fetch_result = mli.FetchModelResult(persist_model_file.read_bytes())
+    load_result = worker.load_model(request, fetch_result)
 
     value = torch.randn(2)
     transform_result = mli.InputTransformResult([value])
@@ -126,8 +118,6 @@ def test_execute_model(persist_model_file: pathlib.Path) -> None:
 
 def test_execute_missing_model(persist_model_file: pathlib.Path) -> None:
     """Verify that a executing a model with an invalid key fails cleanly"""
-
-    # todo: consider moving to file specific to key tests
 
     # use key that references an un-set model value
     model_name = "test-key"
@@ -160,10 +150,7 @@ def test_transform_output() -> None:
     request = mli.InferenceRequest()
     exec_result = mli.ExecuteResult(inputs)
 
-    result = worker.transform_output(
-        request, exec_result
-    )
-    # transform_result = mli.InputTransformResult(transformed)
+    result = worker.transform_output(request, exec_result)
 
     assert len(result.outputs) == num_values
 

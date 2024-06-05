@@ -236,27 +236,44 @@ class BatchResult:
         self.batch = result
 
 
+class FetchModelResult:
+    """A wrapper around raw fetched models"""
+
+    def __init__(self, result: bytes) -> None:
+        """Initialize the BatchResult"""
+        self.model_bytes = result
+
+
 class MachineLearningWorkerCore:
     """Basic functionality of ML worker that is shared across all worker types"""
 
     @staticmethod
-    def fetch_model(request: InferenceRequest, feature_store: FeatureStore) -> bytes:
+    def fetch_model(
+        request: InferenceRequest, feature_store: FeatureStore
+    ) -> FetchModelResult:
         """Given a resource key, retrieve the raw model from a feature store
         :param request: The request that triggered the pipeline
         :param feature_store: The feature store used for persistence
         :return: Raw bytes of the model"""
-        key = request.model_key
-        if not key:
+        if request.raw_model:
+            # Should we cache model in the feature store?
+            # model_key = hash(request.raw_model)
+            # feature_store[model_key] = request.raw_model
+            # short-circuit and return the directly supplied model
+            return FetchModelResult(request.raw_model)
+
+        if not request.model_key:
             raise sse.SmartSimError(
                 "Key must be provided to retrieve model from feature store"
             )
 
         try:
-            return feature_store[key]
+            raw_bytes = feature_store[request.model_key]
+            return FetchModelResult(raw_bytes)
         except FileNotFoundError as ex:
             logger.exception(ex)
             raise sse.SmartSimError(
-                f"Model could not be retrieved with key {key}"
+                f"Model could not be retrieved with key {request.model_key}"
             ) from ex
 
     @staticmethod
@@ -335,7 +352,9 @@ class MachineLearningWorkerBase(MachineLearningWorkerCore, ABC):
 
     @staticmethod
     @abstractmethod
-    def load_model(request: InferenceRequest) -> ModelLoadResult:
+    def load_model(
+        request: InferenceRequest, fetch_result: FetchModelResult
+    ) -> ModelLoadResult:
         """Given a loaded MachineLearningModel, ensure it is loaded into
         device memory
         :param request: The request that triggered the pipeline
@@ -393,14 +412,14 @@ class SampleTorchWorker(MachineLearningWorkerBase):
         return request
 
     @staticmethod
-    def load_model(request: InferenceRequest) -> ModelLoadResult:
-        if not request.raw_model:
+    def load_model(
+        request: InferenceRequest, fetch_result: FetchModelResult
+    ) -> ModelLoadResult:
+        model_bytes = fetch_result.model_bytes or request.raw_model
+        if not model_bytes:
             raise ValueError("Unable to load model without reference object")
 
-        # invoke separate API functions to put the model on GPU/accelerator (if exists)
-        raw_bytes = request.raw_model or b""  # todo: ???
-        model_bytes = io.BytesIO(raw_bytes)
-        model: torch.nn.Module = torch.load(model_bytes)
+        model: torch.nn.Module = torch.load(io.BytesIO(model_bytes))
         result = ModelLoadResult(model)
         return result
 
@@ -590,16 +609,10 @@ class WorkerManager(ServiceHost):
         msg: bytes = self.upstream_queue.get()
 
         request = self._worker.deserialize(msg)
-
-        # self._worker.fetch_model(request_ctx)
-
-        # todo: consider splitting load model & fetch model so
-        # load model is SPECIFICALLY load onto GPU, not from feature_store
-        model_result = self._worker.load_model(request)
-
-        fetch_result = self._worker.fetch_inputs(
+        fetch_model_result = self._worker.fetch_model(request, self._feature_store)
+        model_result = self._worker.load_model(request, fetch_model_result)
+        fetch_input_result = self._worker.fetch_inputs(
             request,
-            # request.input_keys, self._feature_store, request
             self._feature_store,
         )  # we don't know if they'lll fetch in some weird way
         # they potentially need access to custom attributes
@@ -607,7 +620,7 @@ class WorkerManager(ServiceHost):
         # but we just want to advertise that the contract states "the output
         # will be the input to transform_input... "
 
-        transform_result = self._worker.transform_input(request, fetch_result)
+        transform_result = self._worker.transform_input(request, fetch_input_result)
 
         # batch: t.Collection[_Datum] = transform_result.transformed_input
         # if self._batch_size:
