@@ -206,6 +206,11 @@ class ExecuteResult:
         self.predictions = result
 
 
+class InputFetchResult:
+    def __init__(self, result: t.Any) -> None:
+        self.inputs = result
+
+
 class MachineLearningWorkerCore:
     """Basic functionality of ML worker that is shared across all worker types"""
 
@@ -229,7 +234,7 @@ class MachineLearningWorkerCore:
     @staticmethod
     def fetch_inputs(
         request: InferenceRequest, feature_store: FeatureStore
-    ) -> t.Collection[bytes]:
+    ) -> InputFetchResult:
         """Given a collection of ResourceKeys, identify the physical location
         and input metadata
 
@@ -249,10 +254,10 @@ class MachineLearningWorkerCore:
                     raise sse.SmartSimError(
                         f"Model could not be retrieved with key {input_}"
                     ) from ex
-            return data
+            return InputFetchResult(data)
 
         if request.raw_inputs:
-            return request.raw_inputs
+            return InputFetchResult(request.raw_inputs)
 
         raise ValueError("No input source")
 
@@ -308,8 +313,7 @@ class MachineLearningWorkerBase(MachineLearningWorkerCore, ABC):
     @staticmethod
     @abstractmethod
     def transform_input(
-        request: InferenceRequest,
-        data: t.Collection[bytes],
+        request: InferenceRequest, fetch_result: InputFetchResult
     ) -> InputTransformResult:
         """Given a collection of data, perform a transformation on the data"""
 
@@ -363,11 +367,10 @@ class DefaultTorchWorker(MachineLearningWorkerBase):
 
     @staticmethod
     def transform_input(
-        request: InferenceRequest,
-        data: t.Collection[bytes],
+        request: InferenceRequest, fetch_result: InputFetchResult
     ) -> InputTransformResult:
         """Given a collection of data, perform a no-op, copy-only transform"""
-        result = [torch.load(io.BytesIO(item)) for item in data]
+        result = [torch.load(io.BytesIO(item)) for item in fetch_result.inputs]
         return InputTransformResult(result)
         # return data # note: this fails copy test!
 
@@ -554,7 +557,7 @@ class WorkerManager(ServiceHost):
         # load model is SPECIFICALLY load onto GPU, not from feature_store
         model_result = self._worker.load_model(request)
 
-        fetched_inputs = self._worker.fetch_inputs(
+        fetch_result = self._worker.fetch_inputs(
             request,
             # request.input_keys, self._feature_store, request
             self._feature_store,
@@ -571,7 +574,7 @@ class WorkerManager(ServiceHost):
         # with Pool(4) as p:
         # p.(worker.transform_input, fetch_inputs)
         # p.start()
-        transform_result = self._worker.transform_input(request, fetched_inputs)
+        transform_result = self._worker.transform_input(request, fetch_result)
 
         # batch: t.Collection[_Datum] = transform_result.transformed_input
         # if self._batch_size:

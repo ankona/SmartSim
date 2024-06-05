@@ -129,7 +129,7 @@ def test_fetch_model_memory(persist_model_file: pathlib.Path) -> None:
     feature_store[key] = persist_model_file.read_bytes()
 
     request = mli.InferenceRequest(model_key=key)
-    
+
     raw_bytes = worker.fetch_model(request, feature_store)
     assert raw_bytes
     assert raw_bytes == persist_model_file.read_bytes()
@@ -146,8 +146,8 @@ def test_fetch_input_disk(persist_tensor_file: pathlib.Path) -> None:
     feature_store = mli.MemoryFeatureStore()
     feature_store[tensor_name] = persist_tensor_file.read_bytes()
 
-    raw_bytes = worker.fetch_inputs(request, feature_store)
-    assert raw_bytes
+    fetch_result = worker.fetch_inputs(request, feature_store)
+    assert fetch_result.inputs is not None
 
 
 def test_fetch_input_disk_missing() -> None:
@@ -184,9 +184,9 @@ def test_fetch_input_feature_store(persist_tensor_file: pathlib.Path) -> None:
     # put model bytes into the feature store
     feature_store[tensor_name] = persist_tensor_file.read_bytes()
 
-    raw_bytes = worker.fetch_inputs(request, feature_store)
-    assert raw_bytes
-    assert list(raw_bytes)[0][:10] == persist_tensor_file.read_bytes()[:10]
+    fetch_result = worker.fetch_inputs(request, feature_store)
+    assert fetch_result.inputs
+    assert list(fetch_result.inputs)[0][:10] == persist_tensor_file.read_bytes()[:10]
 
 
 def test_fetch_multi_input_feature_store(persist_tensor_file: pathlib.Path) -> None:
@@ -211,9 +211,9 @@ def test_fetch_multi_input_feature_store(persist_tensor_file: pathlib.Path) -> N
         input_keys=[tensor_name + "1", tensor_name + "2", tensor_name + "3"]
     )
 
-    raw_bytes = worker.fetch_inputs(request, feature_store)
+    fetch_result = worker.fetch_inputs(request, feature_store)
 
-    raw_bytes = list(raw_bytes)
+    raw_bytes = list(fetch_result.inputs)
     assert raw_bytes
     assert raw_bytes[0][:10] == persist_tensor_file.read_bytes()[:10]
     assert raw_bytes[1][:10] == body2[:10]
@@ -247,8 +247,8 @@ def test_fetch_input_memory(persist_tensor_file: pathlib.Path) -> None:
     feature_store[model_name] = persist_tensor_file.read_bytes()
     request = mli.InferenceRequest(input_keys=[model_name])
 
-    raw_bytes = worker.fetch_inputs(request, feature_store)
-    assert raw_bytes
+    fetch_result = worker.fetch_inputs(request, feature_store)
+    assert fetch_result.inputs is not None
 
 
 def test_batch_requests() -> None:

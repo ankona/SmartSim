@@ -82,8 +82,9 @@ def test_transform_input() -> None:
         torch.save(tensor, buffer)
         inputs.append(buffer.getvalue())
 
+    fetch_result = mli.InputFetchResult(inputs)
     worker = mli.DefaultTorchWorker
-    result = worker.transform_input(request, inputs)
+    result = worker.transform_input(request, fetch_result)
     transformed: t.Collection[torch.Tensor] = result.transformed_input
 
     assert len(transformed) == num_values
