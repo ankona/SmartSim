@@ -58,7 +58,9 @@ def test_fetch_model_disk(persist_model_file: pathlib.Path) -> None:
     feature_store = mli.FileSystemFeatureStore()
     feature_store[str(persist_model_file)] = persist_model_file.read_bytes()
 
-    raw_bytes = worker.fetch_model(key, feature_store)
+    request = mli.InferenceRequest(model_key=key)
+
+    raw_bytes = worker.fetch_model(request, feature_store)
     assert raw_bytes
     assert raw_bytes == persist_model_file.read_bytes()
 
@@ -69,14 +71,16 @@ def test_fetch_model_disk_missing() -> None:
     worker = mli.MachineLearningWorkerCore
     feature_store = mli.FileSystemFeatureStore()
 
-    bad_key_path = pathlib.Path("/path/that/doesnt/exist")
+    key = "/path/that/doesnt/exist"
+
+    request = mli.InferenceRequest(model_key=key)
 
     # todo: consider that raising this exception shows impl. replace...
     with pytest.raises(sse.SmartSimError) as ex:
-        worker.fetch_model(str(bad_key_path), feature_store)
+        worker.fetch_model(request, feature_store)
 
     # ensure the error message includes key-identifying information
-    assert str(bad_key_path) in ex.value.args[0]
+    assert key in ex.value.args[0]
 
 
 def test_fetch_model_feature_store(persist_model_file: pathlib.Path) -> None:
@@ -91,7 +95,8 @@ def test_fetch_model_feature_store(persist_model_file: pathlib.Path) -> None:
     feature_store = mli.MemoryFeatureStore()
     feature_store[key] = persist_model_file.read_bytes()
 
-    raw_bytes = worker.fetch_model(key, feature_store)
+    request = mli.InferenceRequest(model_key=key)
+    raw_bytes = worker.fetch_model(request, feature_store)
     assert raw_bytes
     assert raw_bytes == persist_model_file.read_bytes()
 
@@ -104,9 +109,11 @@ def test_fetch_model_feature_store_missing() -> None:
     bad_key = "some-key"
     feature_store = mli.MemoryFeatureStore()
 
+    request = mli.InferenceRequest(model_key=bad_key)
+
     # todo: consider that raising this exception shows impl. replace...
     with pytest.raises(sse.SmartSimError) as ex:
-        worker.fetch_model(bad_key, feature_store)
+        worker.fetch_model(request, feature_store)
 
     # ensure the error message includes key-identifying information
     assert bad_key in ex.value.args[0]
@@ -121,7 +128,9 @@ def test_fetch_model_memory(persist_model_file: pathlib.Path) -> None:
     feature_store = mli.MemoryFeatureStore()
     feature_store[key] = persist_model_file.read_bytes()
 
-    raw_bytes = worker.fetch_model(key, feature_store)
+    request = mli.InferenceRequest(model_key=key)
+    
+    raw_bytes = worker.fetch_model(request, feature_store)
     assert raw_bytes
     assert raw_bytes == persist_model_file.read_bytes()
 
@@ -247,10 +256,12 @@ def test_batch_requests() -> None:
     worker = mli.MachineLearningWorkerCore
     result = mli.InputTransformResult([])
 
+    request = mli.InferenceRequest(batch_size=10)
+
     with pytest.raises(NotImplementedError):
         # NOTE: we expect this to fail since it's not yet implemented.
         # TODO: once implemented, replace this expectation of failure...
-        worker.batch_requests(result, 10)
+        worker.batch_requests(request, result)
 
 
 def test_place_outputs() -> None:

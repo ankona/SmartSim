@@ -184,6 +184,7 @@ class InferenceRequest:
         input_keys: t.Optional[t.List[str]] = None,
         output_keys: t.Optional[t.List[str]] = None,
         raw_model: t.Optional[bytes] = None,
+        batch_size: int = 0,
     ):
         """Initialize the InferenceRequest"""
         self.model_key = model_key
@@ -192,6 +193,7 @@ class InferenceRequest:
         self.raw_inputs = raw_inputs
         self.input_keys = input_keys or []
         self.output_keys = output_keys or []
+        self.batch_size = batch_size
 
 
 class InferenceReply:
@@ -226,8 +228,14 @@ class MachineLearningWorkerCore:
     """Basic functionality of ML worker that is shared across all worker types"""
 
     @staticmethod
-    def fetch_model(key: str, feature_store: FeatureStore) -> bytes:
+    def fetch_model(request: InferenceRequest, feature_store: FeatureStore) -> bytes:
         """Given a ResourceKey, identify the physical location and model metadata"""
+        key = request.model_key
+        if not key:
+            raise sse.SmartSimError(
+                "Key must be provided to retrieve model from feature store"
+            )
+
         try:
             return feature_store[key]
         except FileNotFoundError as ex:
@@ -268,7 +276,7 @@ class MachineLearningWorkerCore:
 
     @staticmethod
     def batch_requests(
-        transform_result: InputTransformResult, batch_size: int
+        request: InferenceRequest, transform_result: InputTransformResult
     ) -> t.Collection[_Datum]:
         """Create a batch of requests. Return the batch when batch_size datum have been
         collected or a configured batch duration has elapsed.
@@ -277,7 +285,7 @@ class MachineLearningWorkerCore:
         :param batch_size: The maximum allowed batch size
 
         :return: `None` if batch size has not been reached and timeout not exceeded."""
-        if transform_result is not None or batch_size:
+        if transform_result is not None or request.batch_size:
             raise NotImplementedError("Batching is not yet supported")
         return []
 
