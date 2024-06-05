@@ -12,9 +12,12 @@ import torch
 
 import smartsim.error as sse
 from smartsim.log import get_logger
+from .message_handler import MessageHandler
 
 if t.TYPE_CHECKING:
     import dragon.channels as dch
+    import dragon.utils as du
+
 
 logger = get_logger(__name__)
 
@@ -139,17 +142,36 @@ class CommChannel(ABC):
         raise NotImplementedError()
 
 
+
+
 class DragonCommChannel(CommChannel):
     """Passes messages by writing to a Dragon channel"""
 
     def __init__(self, channel: "dch.Channel") -> None:
         """Initialize the DragonCommChannel instance"""
         self._channel = channel
+        self._descriptor = "n/a"
 
     def send(self, value: bytes) -> None:
         """Send a message throuh the underlying communication channel
         :param value: The value to send"""
         self._channel.send_bytes(value)
+
+    # @property
+    # def key(self) -> str:
+    #     """Return the channel descriptor for the underlying dragon channel"""
+    #     descriptor = du.B64.bytes_to_str(self._channel.serialize())
+    #     return descriptor
+
+    @classmethod
+    def find(cls, key: bytes) -> "CommChannel":
+        """Find a channel given its serialized key
+        :param key: The unique descriptor of a communications channel"""
+        # todo: load channel correctly using dragon
+        # ch = dch.Channel(key)
+        dc = DragonCommChannel(key)
+        dc._descriptor = key
+        return dc
 
 
 class InferenceRequest:
@@ -164,6 +186,7 @@ class InferenceRequest:
         output_keys: t.Optional[t.List[str]] = None,
         raw_model: t.Optional[bytes] = None,
         batch_size: int = 0,
+        device: t.Optional[str] = None,
     ):
         """Initialize the InferenceRequest"""
         self.model_key = model_key
@@ -173,12 +196,14 @@ class InferenceRequest:
         self.input_keys = input_keys or []
         self.output_keys = output_keys or []
         self.batch_size = batch_size
+        self.device = device
 
     @staticmethod
     def from_dict(source: t.Dict[str, t.Any]) -> "InferenceRequest":
         return InferenceRequest(
             # **source
         )
+
 
 class InferenceReply:
     """Temporary model of a reply to an inference request"""
@@ -465,6 +490,95 @@ class SampleTorchWorker(MachineLearningWorkerBase):
         return pickle.dumps(reply)
 
 
+class IntegratedTorchWorker(MachineLearningWorkerBase):
+    """A minimum implementation of a worker that executes a PyTorch model"""
+
+    @staticmethod
+    def deserialize(data_blob: bytes) -> InferenceRequest:
+        actual_request = MessageHandler.deserialize_request(data_blob)
+        # return request
+        device = None
+        if actual_request.device.which() == "deviceType":
+            device = actual_request.device.deviceType
+
+        comm_channel = DragonCommChannel.find(actual_request.replyChannel.reply)
+        # comm_channel = DragonCommChannel(actual_request.replyChannel)
+        request = InferenceRequest(device=device, callback=comm_channel)
+        return request
+
+    @staticmethod
+    def load_model(
+        request: InferenceRequest, fetch_result: FetchModelResult
+    ) -> ModelLoadResult:
+        model_bytes = fetch_result.model_bytes or request.raw_model
+        if not model_bytes:
+            raise ValueError("Unable to load model without reference object")
+
+        model: torch.nn.Module = torch.load(io.BytesIO(model_bytes))
+        result = ModelLoadResult(model)
+        return result
+
+    @staticmethod
+    def transform_input(
+        request: InferenceRequest, fetch_result: InputFetchResult
+    ) -> InputTransformResult:
+        result = [torch.load(io.BytesIO(item)) for item in fetch_result.inputs]
+        return InputTransformResult(result)
+        # return data # note: this fails copy test!
+
+    @staticmethod
+    def execute(
+        request: InferenceRequest,
+        load_result: ModelLoadResult,
+        transform_result: InputTransformResult,
+    ) -> ExecuteResult:
+        """Execute an ML model on the given inputs"""
+        if not load_result.model:
+            raise sse.SmartSimError("Model must be loaded to execute")
+
+        model = load_result.model
+        results = [model(tensor) for tensor in transform_result.transformed]
+
+        execute_result = ExecuteResult(results)
+        return execute_result
+
+    @staticmethod
+    def transform_output(
+        request: InferenceRequest,
+        execute_result: ExecuteResult,
+    ) -> OutputTransformResult:
+        transformed = [item.clone() for item in execute_result.predictions]
+        return OutputTransformResult(transformed)
+
+    @staticmethod
+    def serialize_reply(reply: InferenceReply) -> bytes:
+        # actual_request = MessageHandler.deserialize_request(data_blob)
+        # # return request
+        # device = None
+        # if actual_request.device.which() == "deviceType":
+        #     device = actual_request.device.deviceType
+
+        # comm_channel = DragonCommChannel.find(actual_request.replyChannel.reply)
+        # # comm_channel = DragonCommChannel(actual_request.replyChannel)
+        # request = InferenceRequest(device=device, callback=comm_channel)
+        # return request
+
+        msg_keys = []
+        for key in reply.output_keys:
+            # result_key1 = MessageHandler.build_tensor_key("result_key1")
+            msg_key = MessageHandler.build_tensor_key(key)
+            msg_keys.append(msg_key)
+
+        response = MessageHandler.build_response(
+            status=200,  # todo: need to indicate correct status
+            message="Inference Complete", # todo: decide what these will be
+            result=msg_keys,
+            custom_attributes=None,
+        )
+        serialized_resp = MessageHandler.serialize_response(response)
+        return serialized_resp
+
+
 class ServiceHost(ABC):
     """Base contract for standalone entrypoint scripts. Defines API for entrypoint
     behaviors (event loop, automatic shutdown, cooldown) as well as simple
@@ -682,6 +796,55 @@ def mock_work(worker_manager_queue: "mp.Queue[bytes]") -> None:
 
         msg = f"PyTorch:{mock_model}:MockInputToReplace:{mock_channel}"
         worker_manager_queue.put(msg.encode("utf-8"))
+
+
+
+def persist_model_file(test_dir: str) -> pathlib.Path:
+    test_path = pathlib.Path(test_dir)
+    model_path = test_path / "basic.pt"
+
+    model = torch.nn.Linear(2, 1)
+    torch.save(model, model_path)
+
+    return model_path
+
+def mock_messages(worker_manager_queue: "mp.Queue[bytes]") -> None:
+    """Mock event producer for triggering the inference pipeline"""
+    # todo: move to unit tests
+    while True:
+        time.sleep(1)
+        # 1. for demo, ignore upstream and just put stuff into downstream
+        # 2. for demo, only one downstream but we'd normally have to filter
+        #       msg content and send to the correct downstream (worker) queue
+        timestamp = time.time_ns()
+        test_dir = "/lus/bnchlu1/mcbridch/code"
+        test_path = pathlib.Path(test_dir)
+        test_path.mkdir(parents=True, exist_ok=True)
+
+        mock_channel = test_path / f"brainstorm-{timestamp}.txt"
+        mock_model = test_path / "brainstorm.pt"
+
+        test_path.mkdir(parents=True, exist_ok=True)
+        mock_channel.touch()
+        mock_model.touch()
+
+        # msg = f"PyTorch:{mock_model}:MockInputToReplace:{mock_channel}"
+        input_tensor = torch.randn(2)
+
+        expected_device = "cpu"
+        expected_callback_channel = b"faux_channel_descriptor_bytes"
+
+        message_tensor = MessageHandler.build_tensor(input_tensor, "c", "float32", [2])
+        message_tensor_key = MessageHandler.build_tensor_key("demo")
+        request = MessageHandler.build_request(
+            expected_callback_channel,
+            persist_model_file(test_dir).read_bytes(),
+            expected_device,
+            [message_tensor],
+            [message_tensor_key],
+        )
+        
+        worker_manager_queue.put(MessageHandler.serialize_request(request))
 
 
 if __name__ == "__main__":

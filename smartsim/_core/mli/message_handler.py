@@ -272,6 +272,7 @@ class MessageHandler:
         model: t.Union[request_capnp.ModelKey, t.ByteString],
         device: t.Union[str, None],
         inputs: t.Union[t.List[tensor_capnp.TensorKey], t.List[tensor_capnp.Tensor]],
+        # todo: do we really need outputs? i think it might just be output_keys in request
         outputs: t.Union[t.List[tensor_capnp.TensorKey], t.List[tensor_capnp.Tensor]],
         custom_attributes: t.Union[
             request_attributes_capnp.TorchRequestAttributes,
