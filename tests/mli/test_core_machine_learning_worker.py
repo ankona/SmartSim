@@ -7,7 +7,7 @@ import pytest
 import torch
 
 import smartsim.error as sse
-from smartsim import workermanager as mli
+from smartsim._core.mli import workermanager as mli
 from smartsim._core.utils import installed_redisai_backends
 
 # The tests in this file belong to the group_a group
