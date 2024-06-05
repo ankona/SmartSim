@@ -174,6 +174,11 @@ class InferenceRequest:
         self.output_keys = output_keys or []
         self.batch_size = batch_size
 
+    @staticmethod
+    def from_dict(source: t.Dict[str, t.Any]) -> "InferenceRequest":
+        return InferenceRequest(
+            # **source
+        )
 
 class InferenceReply:
     """Temporary model of a reply to an inference request"""
