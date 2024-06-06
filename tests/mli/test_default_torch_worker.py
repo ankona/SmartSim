@@ -19,7 +19,7 @@ torch_available = "torch" in installed_redisai_backends()
 
 
 @pytest.fixture
-def persist_model_file(test_dir: str) -> pathlib.Path:
+def persist_torch_model(test_dir: str) -> pathlib.Path:
     test_path = pathlib.Path(test_dir)
     model_path = test_path / "basic.pt"
 
@@ -45,12 +45,13 @@ def test_deserialize() -> None:
     # assert deserialized.backend == exp_backend
 
 
-def test_load_model_from_disk(persist_model_file: pathlib.Path) -> None:
+@pytest.mark.skipif(not torch_available, reason="Torch backend is not installed")
+def test_load_model_from_disk(persist_torch_model: pathlib.Path) -> None:
     """Verify that a model can be loaded using a FileSystemFeatureStore"""
     worker = mli.SampleTorchWorker
-    request = mli.InferenceRequest(raw_model=persist_model_file.read_bytes())
+    request = mli.InferenceRequest(raw_model=persist_torch_model.read_bytes())
 
-    fetch_result = mli.FetchModelResult(persist_model_file.read_bytes())
+    fetch_result = mli.FetchModelResult(persist_torch_model.read_bytes())
     load_result = worker.load_model(request, fetch_result)
 
     input = torch.randn(2)
@@ -95,17 +96,18 @@ def test_transform_input() -> None:
     assert transformed[0].equal(2 * original)
 
 
-def test_execute_model(persist_model_file: pathlib.Path) -> None:
+@pytest.mark.skipif(not torch_available, reason="Torch backend is not installed")
+def test_execute_model(persist_torch_model: pathlib.Path) -> None:
     """Verify that a model executes corrrectly via the worker"""
 
     # put model bytes into memory
     model_name = "test-key"
     feature_store = mli.MemoryFeatureStore()
-    feature_store[model_name] = persist_model_file.read_bytes()
+    feature_store[model_name] = persist_torch_model.read_bytes()
 
     worker = mli.SampleTorchWorker
     request = mli.InferenceRequest(model_key=model_name)
-    fetch_result = mli.FetchModelResult(persist_model_file.read_bytes())
+    fetch_result = mli.FetchModelResult(persist_torch_model.read_bytes())
     load_result = worker.load_model(request, fetch_result)
 
     value = torch.randn(2)
@@ -116,13 +118,14 @@ def test_execute_model(persist_model_file: pathlib.Path) -> None:
     assert execute_result.predictions is not None
 
 
-def test_execute_missing_model(persist_model_file: pathlib.Path) -> None:
+@pytest.mark.skipif(not torch_available, reason="Torch backend is not installed")
+def test_execute_missing_model(persist_torch_model: pathlib.Path) -> None:
     """Verify that a executing a model with an invalid key fails cleanly"""
 
     # use key that references an un-set model value
     model_name = "test-key"
     feature_store = mli.MemoryFeatureStore()
-    feature_store[model_name] = persist_model_file.read_bytes()
+    feature_store[model_name] = persist_torch_model.read_bytes()
 
     worker = mli.SampleTorchWorker
     request = mli.InferenceRequest(input_keys=[model_name])

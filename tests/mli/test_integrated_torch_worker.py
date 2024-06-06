@@ -12,7 +12,7 @@ from smartsim._core.mli import workermanager as mli
 from smartsim._core.utils import installed_redisai_backends
 from smartsim._core.mli.message_handler import MessageHandler
 
-# The tests in this file belong to the group_a group
+# The tests in this file belong to the group_b group
 pytestmark = pytest.mark.group_b
 
 # retrieved from pytest fixtures
@@ -21,7 +21,7 @@ torch_available = "torch" in installed_redisai_backends()
 
 
 @pytest.fixture
-def persist_model_file(test_dir: str) -> pathlib.Path:
+def persist_torch_model(test_dir: str) -> pathlib.Path:
     test_path = pathlib.Path(test_dir)
     model_path = test_path / "basic.pt"
 
@@ -31,32 +31,31 @@ def persist_model_file(test_dir: str) -> pathlib.Path:
     return model_path
 
 
-def test_deserialize(test_dir: str, persist_model_file: pathlib.Path) -> None:
-    """Verify that the MessageHandler deserializer handles the
-    message properly"""
+@pytest.mark.skipif(not torch_available, reason="Torch backend is not installed")
+def test_deserialize_direct_request(persist_torch_model: pathlib.Path) -> None:
+    """Verify that a direct requestis deserialized properly"""
     worker = mli.IntegratedTorchWorker
-    # buffer = io.BytesIO()
+    # feature_store = mli.MemoryFeatureStore()
 
-    # timestamp = time.time_ns()
-    # test_path = pathlib.Path(test_dir)
+    model_bytes = persist_torch_model.read_bytes()
     input_tensor = torch.randn(2)
-    # mock_channel = test_path / f"brainstorm-{timestamp}.txt"
 
     expected_device = "cpu"
     expected_callback_channel = b"faux_channel_descriptor_bytes"
+    callback_channel = mli.DragonCommChannel.find(expected_callback_channel)
 
-    message_tensor = MessageHandler.build_tensor(input_tensor, "c", "float32", [2])
-    message_tensor_key = MessageHandler.build_tensor_key("demo")
-    request = MessageHandler.build_request(
-        expected_callback_channel,
-        persist_model_file.read_bytes(),
-        expected_device,
-        [message_tensor],
-        [message_tensor_key],
-        None,
+    message_tensor_input = MessageHandler.build_tensor(
+        input_tensor, "c", "float32", [2]
     )
 
-    # proto_guy_dictionary = request.to_dict()
+    request = MessageHandler.build_request(
+        reply_channel=callback_channel.descriptor,
+        model=model_bytes,
+        device=expected_device,
+        inputs=[message_tensor_input],
+        outputs=[],
+        custom_attributes=None,
+    )
 
     msg_bytes = MessageHandler.serialize_request(request)
 
@@ -65,7 +64,184 @@ def test_deserialize(test_dir: str, persist_model_file: pathlib.Path) -> None:
     assert inference_request.callback._descriptor == expected_callback_channel
 
 
-def test_serialize(test_dir: str, persist_model_file: pathlib.Path) -> None:
+@pytest.mark.skipif(not torch_available, reason="Torch backend is not installed")
+def test_deserialize_indirect_request(persist_torch_model: pathlib.Path) -> None:
+    """Verify that an indirect request is deserialized correctly"""
+    worker = mli.IntegratedTorchWorker
+    # feature_store = mli.MemoryFeatureStore()
+
+    model_key = "persisted-model"
+    # model_bytes = persist_torch_model.read_bytes()
+    # feature_store[model_key] = model_bytes
+
+    input_key = f"demo-input"
+    # input_tensor = torch.randn(2)
+    # feature_store[input_key] = input_tensor
+
+    expected_device = "cpu"
+    expected_callback_channel = b"faux_channel_descriptor_bytes"
+    callback_channel = mli.DragonCommChannel.find(expected_callback_channel)
+
+    output_key = f"demo-output"
+
+    message_tensor_output_key = MessageHandler.build_tensor_key(output_key)
+    message_tensor_input_key = MessageHandler.build_tensor_key(input_key)
+    message_model_key = MessageHandler.build_model_key(model_key)
+
+    request = MessageHandler.build_request(
+        reply_channel=callback_channel.descriptor,
+        model=message_model_key,
+        device=expected_device,
+        inputs=[message_tensor_input_key],
+        outputs=[message_tensor_output_key],
+        custom_attributes=None,
+    )
+
+    msg_bytes = MessageHandler.serialize_request(request)
+
+    inference_request = worker.deserialize(msg_bytes)
+    assert inference_request.device == expected_device
+    assert inference_request.callback._descriptor == expected_callback_channel
+
+
+@pytest.mark.skipif(not torch_available, reason="Torch backend is not installed")
+def test_deserialize_mixed_mode_indirect_inputs(persist_torch_model: pathlib.Path) -> None:
+    """Verify that a mixed mode (combining direct and indirect inputs, models, outputs)
+    with indirect inputs is deserialized correctly"""
+    worker = mli.IntegratedTorchWorker
+    # feature_store = mli.MemoryFeatureStore()
+
+    # model_key = "persisted-model"
+    model_bytes = persist_torch_model.read_bytes()
+    # feature_store[model_key] = model_bytes
+
+    input_key = f"demo-input"
+    # input_tensor = torch.randn(2)
+    # feature_store[input_key] = input_tensor
+
+    expected_device = "cpu"
+    expected_callback_channel = b"faux_channel_descriptor_bytes"
+    callback_channel = mli.DragonCommChannel.find(expected_callback_channel)
+
+    output_key = f"demo-output"
+
+    message_tensor_output_key = MessageHandler.build_tensor_key(output_key)
+    message_tensor_input_key = MessageHandler.build_tensor_key(input_key)
+    # message_model_key = MessageHandler.build_model_key(model_key)
+
+    request = MessageHandler.build_request(
+        reply_channel=callback_channel.descriptor,
+        model=model_bytes,
+        device=expected_device,
+        inputs=[message_tensor_input_key],
+        # outputs=[message_tensor_output_key],
+        outputs=[],
+        custom_attributes=None,
+    )
+
+    msg_bytes = MessageHandler.serialize_request(request)
+
+    inference_request = worker.deserialize(msg_bytes)
+    assert inference_request.device == expected_device
+    assert inference_request.callback._descriptor == expected_callback_channel
+
+
+@pytest.mark.skipif(not torch_available, reason="Torch backend is not installed")
+def test_deserialize_mixed_mode_indirect_outputs(
+    persist_torch_model: pathlib.Path,
+) -> None:
+    """Verify that a mixed mode (combining direct and indirect inputs, models, outputs)
+    with indirect outputs is deserialized correctly"""
+    worker = mli.IntegratedTorchWorker
+    # feature_store = mli.MemoryFeatureStore()
+
+    # model_key = "persisted-model"
+    model_bytes = persist_torch_model.read_bytes()
+    # feature_store[model_key] = model_bytes
+
+    input_key = f"demo-input"
+    input_tensor = torch.randn(2)
+    # feature_store[input_key] = input_tensor
+
+    expected_device = "cpu"
+    expected_callback_channel = b"faux_channel_descriptor_bytes"
+    callback_channel = mli.DragonCommChannel.find(expected_callback_channel)
+
+    output_key = f"demo-output"
+
+    message_tensor_output_key = MessageHandler.build_tensor_key(output_key)
+    # message_tensor_input_key = MessageHandler.build_tensor_key(input_key)
+    # message_model_key = MessageHandler.build_model_key(model_key)
+    message_tensor_input = MessageHandler.build_tensor(
+        input_tensor, "c", "float32", [2]
+    )
+
+    request = MessageHandler.build_request(
+        reply_channel=callback_channel.descriptor,
+        model=model_bytes,
+        device=expected_device,
+        inputs=[message_tensor_input],
+        # outputs=[message_tensor_output_key],
+        outputs=[message_tensor_output_key],
+        custom_attributes=None,
+    )
+
+    msg_bytes = MessageHandler.serialize_request(request)
+
+    inference_request = worker.deserialize(msg_bytes)
+    assert inference_request.device == expected_device
+    assert inference_request.callback._descriptor == expected_callback_channel
+
+
+@pytest.mark.skipif(not torch_available, reason="Torch backend is not installed")
+def test_deserialize_mixed_mode_indirect_model(
+    persist_torch_model: pathlib.Path,
+) -> None:
+    """Verify that a mixed mode (combining direct and indirect inputs, models, outputs)
+    with indirect outputs is deserialized correctly"""
+    worker = mli.IntegratedTorchWorker
+    # feature_store = mli.MemoryFeatureStore()
+
+    model_key = "persisted-model"
+    # model_bytes = persist_torch_model.read_bytes()
+    # feature_store[model_key] = model_bytes
+
+    # input_key = f"demo-input"
+    input_tensor = torch.randn(2)
+    # feature_store[input_key] = input_tensor
+
+    expected_device = "cpu"
+    expected_callback_channel = b"faux_channel_descriptor_bytes"
+    callback_channel = mli.DragonCommChannel.find(expected_callback_channel)
+
+    output_key = f"demo-output"
+
+    # message_tensor_output_key = MessageHandler.build_tensor_key(output_key)
+    # message_tensor_input_key = MessageHandler.build_tensor_key(input_key)
+    message_model_key = MessageHandler.build_model_key(model_key)
+    message_tensor_input = MessageHandler.build_tensor(
+        input_tensor, "c", "float32", [2]
+    )
+
+    request = MessageHandler.build_request(
+        reply_channel=callback_channel.descriptor,
+        model=message_model_key,
+        device=expected_device,
+        inputs=[message_tensor_input],
+        # outputs=[message_tensor_output_key],
+        outputs=[],
+        custom_attributes=None,
+    )
+
+    msg_bytes = MessageHandler.serialize_request(request)
+
+    inference_request = worker.deserialize(msg_bytes)
+    assert inference_request.device == expected_device
+    assert inference_request.callback._descriptor == expected_callback_channel
+
+
+@pytest.mark.skipif(not torch_available, reason="Torch backend is not installed")
+def test_serialize(test_dir: str, persist_torch_model: pathlib.Path) -> None:
     """Verify that the worker correctly executes reply serialization"""
     worker = mli.IntegratedTorchWorker
 
@@ -83,4 +259,4 @@ def test_serialize(test_dir: str, persist_model_file: pathlib.Path) -> None:
     actual_tensor_keys = [tk.key for tk in actual_reply.result.keys]
     assert set(actual_tensor_keys) == set(reply.output_keys)
     assert actual_reply.status == 200
-    assert actual_reply.statusMessage == "Inference Complete"
+    assert actual_reply.statusMessage == "success"

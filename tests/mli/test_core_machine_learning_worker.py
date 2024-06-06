@@ -59,7 +59,7 @@ class FileSystemFeatureStore(mli.FeatureStore):
 
 
 @pytest.fixture
-def persist_model_file(test_dir: str) -> pathlib.Path:
+def persist_torch_model(test_dir: str) -> pathlib.Path:
     ts_start = time.time_ns()
     print("Starting model file creation...")
     test_path = pathlib.Path(test_dir)
@@ -75,7 +75,7 @@ def persist_model_file(test_dir: str) -> pathlib.Path:
 
 
 @pytest.fixture
-def persist_tensor_file(test_dir: str) -> pathlib.Path:
+def persist_torch_tensor(test_dir: str) -> pathlib.Path:
     ts_start = time.time_ns()
     print("Starting model file creation...")
     test_path = pathlib.Path(test_dir)
@@ -90,19 +90,20 @@ def persist_tensor_file(test_dir: str) -> pathlib.Path:
     return file_path
 
 
-def test_fetch_model_disk(persist_model_file: pathlib.Path) -> None:
+@pytest.mark.skipif(not torch_available, reason="Torch backend is not installed")
+def test_fetch_model_disk(persist_torch_model: pathlib.Path) -> None:
     """Verify that the ML worker successfully retrieves a model
     when given a valid (file system) key"""
     worker = mli.MachineLearningWorkerCore
-    key = str(persist_model_file)
+    key = str(persist_torch_model)
     feature_store = FileSystemFeatureStore()
-    feature_store[str(persist_model_file)] = persist_model_file.read_bytes()
+    feature_store[str(persist_torch_model)] = persist_torch_model.read_bytes()
 
     request = mli.InferenceRequest(model_key=key)
 
     fetch_result = worker.fetch_model(request, feature_store)
     assert fetch_result.model_bytes
-    assert fetch_result.model_bytes == persist_model_file.read_bytes()
+    assert fetch_result.model_bytes == persist_torch_model.read_bytes()
 
 
 def test_fetch_model_disk_missing() -> None:
@@ -122,7 +123,8 @@ def test_fetch_model_disk_missing() -> None:
     assert key in ex.value.args[0]
 
 
-def test_fetch_model_feature_store(persist_model_file: pathlib.Path) -> None:
+@pytest.mark.skipif(not torch_available, reason="Torch backend is not installed")
+def test_fetch_model_feature_store(persist_torch_model: pathlib.Path) -> None:
     """Verify that the ML worker successfully retrieves a model
     when given a valid (file system) key"""
     worker = mli.MachineLearningWorkerCore
@@ -132,12 +134,12 @@ def test_fetch_model_feature_store(persist_model_file: pathlib.Path) -> None:
 
     # put model bytes into the feature store
     feature_store = mli.MemoryFeatureStore()
-    feature_store[key] = persist_model_file.read_bytes()
+    feature_store[key] = persist_torch_model.read_bytes()
 
     request = mli.InferenceRequest(model_key=key)
     fetch_result = worker.fetch_model(request, feature_store)
     assert fetch_result.model_bytes
-    assert fetch_result.model_bytes == persist_model_file.read_bytes()
+    assert fetch_result.model_bytes == persist_torch_model.read_bytes()
 
 
 def test_fetch_model_feature_store_missing() -> None:
@@ -158,32 +160,34 @@ def test_fetch_model_feature_store_missing() -> None:
     assert bad_key in ex.value.args[0]
 
 
-def test_fetch_model_memory(persist_model_file: pathlib.Path) -> None:
+@pytest.mark.skipif(not torch_available, reason="Torch backend is not installed")
+def test_fetch_model_memory(persist_torch_model: pathlib.Path) -> None:
     """Verify that the ML worker successfully retrieves a model
     when given a valid (file system) key"""
     worker = mli.MachineLearningWorkerCore
 
     key = "test-model"
     feature_store = mli.MemoryFeatureStore()
-    feature_store[key] = persist_model_file.read_bytes()
+    feature_store[key] = persist_torch_model.read_bytes()
 
     request = mli.InferenceRequest(model_key=key)
 
     fetch_result = worker.fetch_model(request, feature_store)
     assert fetch_result.model_bytes
-    assert fetch_result.model_bytes == persist_model_file.read_bytes()
+    assert fetch_result.model_bytes == persist_torch_model.read_bytes()
 
 
-def test_fetch_input_disk(persist_tensor_file: pathlib.Path) -> None:
+@pytest.mark.skipif(not torch_available, reason="Torch backend is not installed")
+def test_fetch_input_disk(persist_torch_tensor: pathlib.Path) -> None:
     """Verify that the ML worker successfully retrieves a tensor/input
     when given a valid (file system) key"""
-    tensor_name = str(persist_tensor_file)
+    tensor_name = str(persist_torch_tensor)
 
     request = mli.InferenceRequest(input_keys=[tensor_name])
     worker = mli.MachineLearningWorkerCore
 
     feature_store = mli.MemoryFeatureStore()
-    feature_store[tensor_name] = persist_tensor_file.read_bytes()
+    feature_store[tensor_name] = persist_torch_tensor.read_bytes()
 
     fetch_result = worker.fetch_inputs(request, feature_store)
     assert fetch_result.inputs is not None
@@ -207,7 +211,8 @@ def test_fetch_input_disk_missing() -> None:
     assert key in ex.value.args[0]
 
 
-def test_fetch_input_feature_store(persist_tensor_file: pathlib.Path) -> None:
+@pytest.mark.skipif(not torch_available, reason="Torch backend is not installed")
+def test_fetch_input_feature_store(persist_torch_tensor: pathlib.Path) -> None:
     """Verify that the ML worker successfully retrieves a tensor/input
     when given a valid (feature store) key"""
     worker = mli.MachineLearningWorkerCore
@@ -218,14 +223,15 @@ def test_fetch_input_feature_store(persist_tensor_file: pathlib.Path) -> None:
     request = mli.InferenceRequest(input_keys=[tensor_name])
 
     # put model bytes into the feature store
-    feature_store[tensor_name] = persist_tensor_file.read_bytes()
+    feature_store[tensor_name] = persist_torch_tensor.read_bytes()
 
     fetch_result = worker.fetch_inputs(request, feature_store)
     assert fetch_result.inputs
-    assert list(fetch_result.inputs)[0][:10] == persist_tensor_file.read_bytes()[:10]
+    assert list(fetch_result.inputs)[0][:10] == persist_torch_tensor.read_bytes()[:10]
 
 
-def test_fetch_multi_input_feature_store(persist_tensor_file: pathlib.Path) -> None:
+@pytest.mark.skipif(not torch_available, reason="Torch backend is not installed")
+def test_fetch_multi_input_feature_store(persist_torch_tensor: pathlib.Path) -> None:
     """Verify that the ML worker successfully retrieves multiple tensor/input
     when given a valid collection of (feature store) keys"""
     worker = mli.MachineLearningWorkerCore
@@ -234,7 +240,7 @@ def test_fetch_multi_input_feature_store(persist_tensor_file: pathlib.Path) -> N
     feature_store = mli.MemoryFeatureStore()
 
     # put model bytes into the feature store
-    body1 = persist_tensor_file.read_bytes()
+    body1 = persist_torch_tensor.read_bytes()
     feature_store[tensor_name + "1"] = body1
 
     body2 = b"abcdefghijklmnopqrstuvwxyz"
@@ -251,7 +257,7 @@ def test_fetch_multi_input_feature_store(persist_tensor_file: pathlib.Path) -> N
 
     raw_bytes = list(fetch_result.inputs)
     assert raw_bytes
-    assert raw_bytes[0][:10] == persist_tensor_file.read_bytes()[:10]
+    assert raw_bytes[0][:10] == persist_torch_tensor.read_bytes()[:10]
     assert raw_bytes[1][:10] == body2[:10]
     assert raw_bytes[2][:10] == body3[:10]
 
@@ -273,14 +279,15 @@ def test_fetch_input_feature_store_missing() -> None:
     assert bad_key in ex.value.args[0]
 
 
-def test_fetch_input_memory(persist_tensor_file: pathlib.Path) -> None:
+@pytest.mark.skipif(not torch_available, reason="Torch backend is not installed")
+def test_fetch_input_memory(persist_torch_tensor: pathlib.Path) -> None:
     """Verify that the ML worker successfully retrieves a tensor/input
     when given a valid (file system) key"""
     worker = mli.MachineLearningWorkerCore
     feature_store = mli.MemoryFeatureStore()
 
     model_name = "test-model"
-    feature_store[model_name] = persist_tensor_file.read_bytes()
+    feature_store[model_name] = persist_torch_tensor.read_bytes()
     request = mli.InferenceRequest(input_keys=[model_name])
 
     fetch_result = worker.fetch_inputs(request, feature_store)
