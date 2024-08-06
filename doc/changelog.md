@@ -13,6 +13,7 @@ Jump to:
 
 Description
 
+- Enable hostname selection for dragon tasks
 - Enable dynamic feature store selection
 - Fix dragon package installation bug
 - Adjust schemas for better performance

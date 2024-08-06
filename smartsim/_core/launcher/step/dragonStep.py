@@ -167,8 +167,11 @@ class DragonBatchStep(Step):
             run_settings = t.cast(DragonRunSettings, step.step_settings)
             run_args = run_settings.run_args
             env = run_settings.env_vars
-            nodes = int(run_args.get("nodes", None) or 1)
+            nodes = int(
+                run_args.get("nodes", None) or 1
+            )  # todo: is this the same use as my new host-list?
             tasks_per_node = int(run_args.get("tasks-per-node", None) or 1)
+            # hosts = str(run_args.get("host-list", ""))
 
             policy = DragonRunPolicy.from_run_args(run_args)
 
@@ -187,6 +190,7 @@ class DragonBatchStep(Step):
                 output_file=out,
                 error_file=err,
                 policy=policy,
+                # hostlist=hosts,
             )
             requests.append(request_registry.to_string(request))
         with open(request_file, "w", encoding="utf-8") as script_file:

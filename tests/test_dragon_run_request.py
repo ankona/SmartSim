@@ -33,6 +33,8 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import ValidationError
 
+from smartsim._core.launcher.dragon.pqueue import NodePrioritizer
+
 # The tests in this file belong to the group_b group
 pytestmark = pytest.mark.group_b
 
@@ -165,6 +167,11 @@ def get_mock_backend(
     monkeypatch.setattr(
         dragon_backend, "_free_hosts", collections.deque(dragon_backend._hosts)
     )
+    # monkeypatch.setattr(
+    #     dragon_backend._prioritizer,
+    #     NodePrioritizer(dragon_backend._hosts, dragon_backend._queue_lock),
+    #     collections.deque(dragon_backend._hosts),
+    # )
 
     return dragon_backend
 
@@ -272,6 +279,8 @@ def test_run_request(monkeypatch: pytest.MonkeyPatch) -> None:
     assert len(dragon_backend._free_hosts) == 1
     assert dragon_backend._allocated_hosts[dragon_backend.hosts[0]] == step_id
     assert dragon_backend._allocated_hosts[dragon_backend.hosts[1]] == step_id
+    # assert dragon_backend._assigned_steps[dragon_backend.hosts[0]] == step_id
+    # assert dragon_backend._assigned_steps[dragon_backend.hosts[1]] == step_id
 
     monkeypatch.setattr(
         dragon_backend._group_infos[step_id].process_group, "status", "Running"
@@ -284,6 +293,8 @@ def test_run_request(monkeypatch: pytest.MonkeyPatch) -> None:
     assert len(dragon_backend._free_hosts) == 1
     assert dragon_backend._allocated_hosts[dragon_backend.hosts[0]] == step_id
     assert dragon_backend._allocated_hosts[dragon_backend.hosts[1]] == step_id
+    # assert dragon_backend._assigned_steps[dragon_backend.hosts[0]] == step_id
+    # assert dragon_backend._assigned_steps[dragon_backend.hosts[1]] == step_id
 
     dragon_backend._group_infos[step_id].status = SmartSimStatus.STATUS_CANCELLED
 
@@ -369,6 +380,8 @@ def test_run_request_with_policy(monkeypatch: pytest.MonkeyPatch) -> None:
     assert len(dragon_backend._free_hosts) == 1
     assert dragon_backend._allocated_hosts[dragon_backend.hosts[0]] == step_id
     assert dragon_backend._allocated_hosts[dragon_backend.hosts[1]] == step_id
+    # assert dragon_backend._assigned_steps[dragon_backend.hosts[0]] == step_id
+    # assert dragon_backend._assigned_steps[dragon_backend.hosts[1]] == step_id
 
     monkeypatch.setattr(
         dragon_backend._group_infos[step_id].process_group, "status", "Running"
@@ -381,6 +394,8 @@ def test_run_request_with_policy(monkeypatch: pytest.MonkeyPatch) -> None:
     assert len(dragon_backend._free_hosts) == 1
     assert dragon_backend._allocated_hosts[dragon_backend.hosts[0]] == step_id
     assert dragon_backend._allocated_hosts[dragon_backend.hosts[1]] == step_id
+    # assert dragon_backend._assigned_steps[dragon_backend.hosts[0]] == step_id
+    # assert dragon_backend._assigned_steps[dragon_backend.hosts[1]] == step_id
 
     dragon_backend._group_infos[step_id].status = SmartSimStatus.STATUS_CANCELLED
 
@@ -433,7 +448,7 @@ def test_stop_request(monkeypatch: pytest.MonkeyPatch) -> None:
         == SmartSimStatus.STATUS_CANCELLED
     )
 
-    assert len(dragon_backend._allocated_hosts) == 0
+    assert len(dragon_backend._assigned_steps) == 0
     assert len(dragon_backend._free_hosts) == 3
 
 
@@ -672,12 +687,12 @@ def test_view(monkeypatch: pytest.MonkeyPatch) -> None:
     expected_message = textwrap.dedent(f"""\
         Dragon server backend update
         | Host   |  Status  |
-        |--------|----------|
+        |---------|----------|
         | {hosts[0]} |   Busy   |
         | {hosts[1]} |   Free   |
         | {hosts[2]} |   Free   |
         | Step     | Status       | Hosts           |  Return codes  |  Num procs  |
-        |----------|--------------|-------------|----------------|-------------|
+        |----------|--------------|-----------------|----------------|-------------|
         | abc123-1 | Running      | {hosts[0]}         |                |      1      |
         | del999-2 | Cancelled    | {hosts[1]}         |       -9       |      1      |
         | c101vz-3 | Completed    | {hosts[1]},{hosts[2]} |       0        |      2      |
