@@ -262,7 +262,7 @@ class DragonBackend:
     def status_message(self) -> str:
         """Message with status of available nodes and history of launched jobs.
 
-        :returns: Status message
+        :returns: a status message
         """
         return (
             "Dragon server backend update\n"
@@ -274,9 +274,8 @@ class DragonBackend:
 
     @property
     def cooldown_period(self) -> int:
-        """Time (in seconds) the server will wait before shutting down
-
-        when exit conditions are met (see ``should_shutdown()`` for further details).
+        """Time (in seconds) the server will wait before shutting down when
+        exit conditions are met (see ``should_shutdown()`` for further details).
         """
         return self._cooldown_period
 
@@ -310,6 +309,8 @@ class DragonBackend:
         and it requested immediate shutdown, or if it did not request immediate
         shutdown, but all jobs have been executed.
         In both cases, a cooldown period may need to be waited before shutdown.
+
+        :returns: `True` if the server should terminate, otherwise `False`
         """
         if self._shutdown_requested and self._can_shutdown:
             return self._has_cooled_down
@@ -317,7 +318,9 @@ class DragonBackend:
 
     @property
     def current_time(self) -> float:
-        """Current time for DragonBackend object, in seconds since the Epoch"""
+        """Current time for DragonBackend object, in seconds since the Epoch
+
+        :returns: the current timestamp"""
         return time.time()
 
     def _can_honor_policy(
@@ -325,6 +328,7 @@ class DragonBackend:
     ) -> t.Tuple[bool, t.Optional[str]]:
         """Check if the policy can be honored with resources available
         in the allocation.
+
         :param request: DragonRunRequest containing policy information
         :returns: Tuple indicating if the policy can be honored and
         an optional error message"""
@@ -350,32 +354,23 @@ class DragonBackend:
         in the future it will also look at other constraints
         such as memory, accelerators, and so on.
         """
-        if request.nodes > len(self._hosts):
-            message = f"Cannot satisfy request. Requested {request.nodes} nodes, "
-            message += f"but only {len(self._hosts)} nodes are available."
-            return False, message
-        if self._shutdown_requested:
-            message = "Cannot satisfy request, server is shutting down."
-            return False, message
+        honorable, err = self._can_honor_state(request)
+        if not honorable:
+            return False, err
 
         honorable, err = self._can_honor_policy(request)
         if not honorable:
             return False, err
 
+        honorable, err = self._can_honor_hosts(request)
+        if not honorable:
+            return False, err
+
+        honorable, err = self._can_honor_affinities(request)
+        if not honorable:
+            return False, err
+
         return True, None
-        # honorable, err = self._can_honor_hosts(request)
-        # if not honorable:
-        #     return False, err
-
-        # honorable, err = self._can_honor_state(request)
-        # if not honorable:
-        #     return False, err
-
-        # honorable, err = self._can_honor_affinities(request)
-        # if not honorable:
-        #     return False, err
-
-        # return True, None
 
     def _can_honor_affinities(
         self, request: DragonRunRequest
@@ -409,24 +404,30 @@ class DragonBackend:
     ) -> t.Tuple[bool, t.Optional[str]]:
         """Check if the current state of the backend process inhibits executing
         the request.
+
         :param request: the DragonRunRequest to verify
         :returns: Tuple indicating if the request can be honored and
         an optional error message"""
+        # fail if requesting more nodes than the total number available
         if request.nodes > len(self._hosts):
-            message = f"Cannot satisfy request. Requested {request.nodes} nodes, "
-            message += f"but only {len(self._hosts)} nodes are available."
+            message = f"Cannot satisfy request. {request.nodes} requested nodes"
+            message += f"exceeds {len(self._hosts)} available."
             return False, message
 
-        requested_hosts: t.Set[str] = set()
+        requested_hosts: t.Set[str] = set(self._hosts)
         if request.hostlist:
-            requested_hosts = set(request.hostlist)
-            if not requested_hosts:
-                return True, None
+            requested_hosts = set(
+                [host.strip() for host in request.hostlist.split(",")]
+            )
 
         all_hosts = set(self._hosts)
         valid_hosts = all_hosts.intersection(requested_hosts)
+        invalid_hosts = requested_hosts - valid_hosts
 
-        # don't worry about count when only hostnames are supplied (req.nodes == 0)
+        if invalid_hosts:
+            logger.warning(f"Some invalid hostnames were requested: {invalid_hosts}")
+
+        # fail if requesting specific hostnames and there aren't enough available
         if request.nodes > len(valid_hosts):
             message = f"Cannot satisfy request. Requested {request.nodes} nodes, "
             message += f"but only {len(valid_hosts)} named hosts are available."
@@ -459,7 +460,6 @@ class DragonBackend:
         num_hosts: int = request.nodes  # or 1  # todo - make at least 1 again
 
         with self._queue_lock:
-            # # ensure positive integers in valid range are accepted
             # if num_hosts <= 0 or num_hosts > len(self._hosts):
             #     return None
 

@@ -58,6 +58,7 @@ class NodePrioritizer:
             raise SmartSimError("Missing nodes to prioritize")
 
         self._lock = lock
+        """Lock used to ensure thread safe changes of the reference counters"""
 
         self._ref_map: t.Dict[str, _NodeRefCount] = {}
         """Map node names to a ref counter for direct access"""
@@ -134,6 +135,7 @@ class NodePrioritizer:
         sub_heap = self._create_sub_heap(hosts)
         return self._get_next_n_available_nodes(num_items, sub_heap)
 
+    @property
     def unassigned(
         self, heap: t.Optional[t.List[_NodeRefCount]] = None
     ) -> t.List[_NodeRefCount]:
@@ -143,6 +145,7 @@ class NodePrioritizer:
 
         return [node for node in heap if node[0] == 0]
 
+    @property
     def assigned(
         self, heap: t.Optional[t.List[_NodeRefCount]] = None
     ) -> t.List[_NodeRefCount]:

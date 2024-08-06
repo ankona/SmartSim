@@ -30,8 +30,8 @@ import textwrap
 import time
 from unittest.mock import MagicMock
 
+import pydantic.error_wrappers
 import pytest
-from pydantic import ValidationError
 
 from smartsim._core.launcher.dragon.pqueue import NodePrioritizer
 
@@ -552,9 +552,33 @@ def test_can_honor(monkeypatch: pytest.MonkeyPatch, num_nodes: int) -> None:
         pmi_enabled=False,
     )
 
-    assert dragon_backend._can_honor(run_req)[0] == (
-        num_nodes <= len(dragon_backend._hosts)
-    )
+    can_honor, error_msg = dragon_backend._can_honor(run_req)
+
+    nodes_in_range = num_nodes <= len(dragon_backend._hosts)
+    assert can_honor == nodes_in_range
+    assert error_msg is None if nodes_in_range else error_msg is not None
+
+
+@pytest.mark.skipif(not dragon_loaded, reason="Test is only for Dragon WLM systems")
+@pytest.mark.parametrize("num_nodes", [-10, -1, 0])
+def test_can_honor_invalid_num_nodes(
+    monkeypatch: pytest.MonkeyPatch, num_nodes: int
+) -> None:
+    """Verify that requests for invalid numbers of nodes (negative, zero) are rejected"""
+    dragon_backend = get_mock_backend(monkeypatch)
+
+    with pytest.raises(pydantic.error_wrappers.ValidationError) as ex:
+        DragonRunRequest(
+            exe="sleep",
+            exe_args=["5"],
+            path="/a/fake/path",
+            nodes=num_nodes,
+            tasks=1,
+            tasks_per_node=1,
+            env={},
+            current_env={},
+            pmi_enabled=False,
+        )
 
 
 @pytest.mark.skipif(not dragon_loaded, reason="Test is only for Dragon WLM systems")
@@ -684,7 +708,8 @@ def test_view(monkeypatch: pytest.MonkeyPatch) -> None:
     set_mock_group_infos(monkeypatch, dragon_backend)
     hosts = dragon_backend.hosts
 
-    expected_message = textwrap.dedent(f"""\
+    expected_message = textwrap.dedent(
+        f"""\
         Dragon server backend update
         | Host   |  Status  |
         |---------|----------|
@@ -697,10 +722,80 @@ def test_view(monkeypatch: pytest.MonkeyPatch) -> None:
         | del999-2 | Cancelled    | {hosts[1]}         |       -9       |      1      |
         | c101vz-3 | Completed    | {hosts[1]},{hosts[2]} |       0        |      2      |
         | 0ghjk1-4 | Failed       | {hosts[2]}         |       -1       |      1      |
-        | ljace0-5 | NeverStarted |                 |                |      0      |""")
+        | ljace0-5 | NeverStarted |                 |                |      0      |"""
+    )
 
     # get rid of white space to make the comparison easier
     actual_msg = dragon_backend.status_message.replace(" ", "")
     expected_message = expected_message.replace(" ", "")
 
     assert actual_msg == expected_message
+
+
+def test_can_honor_hosts_unavailable_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify that requesting nodes with invalid names causes number of available
+    nodes check to fail due to valid # of named nodes being under num_nodes"""
+    dragon_backend = get_mock_backend(monkeypatch)
+
+    # let's supply 2 invalid and 1 valid hostname
+    actual_hosts = list(dragon_backend._hosts)
+    actual_hosts[0] = f"x{actual_hosts[0]}"
+    actual_hosts[1] = f"x{actual_hosts[1]}"
+
+    host_list = ",".join(actual_hosts)
+
+    run_req = DragonRunRequest(
+        exe="sleep",
+        exe_args=["5"],
+        path="/a/fake/path",
+        nodes=2,  # <----- requesting 2 of 3 available nodes
+        hostlist=host_list,  # <--- only one valid name available
+        tasks=1,
+        tasks_per_node=1,
+        env={},
+        current_env={},
+        pmi_enabled=False,
+        policy=DragonRunPolicy(),
+    )
+    # ['2bce558', '44aa0e0', '5ddd3ec']
+
+    can_honor, error_msg = dragon_backend._can_honor(run_req)
+
+    # confirm the failure is indicated
+    assert not can_honor
+    # confirm failure message indicates number of nodes requested as cause
+    assert "named hosts" in error_msg
+
+
+def test_can_honor_hosts_unavailable_hosts_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify that requesting nodes with invalid names causes number of available
+    nodes check to be reduced but still passes if enough valid named nodes are passed"""
+    dragon_backend = get_mock_backend(monkeypatch)
+
+    # let's supply 2 valid and 1 invalid hostname
+    actual_hosts = list(dragon_backend._hosts)
+    actual_hosts[0] = f"x{actual_hosts[0]}"
+
+    host_list = ",".join(actual_hosts)
+
+    run_req = DragonRunRequest(
+        exe="sleep",
+        exe_args=["5"],
+        path="/a/fake/path",
+        nodes=2,  # <----- requesting 2 of 3 available nodes
+        hostlist=host_list,  # <--- two valid names are available
+        tasks=1,
+        tasks_per_node=1,
+        env={},
+        current_env={},
+        pmi_enabled=False,
+        policy=DragonRunPolicy(),
+    )
+    # ['2bce558', '44aa0e0', '5ddd3ec']
+
+    can_honor, error_msg = dragon_backend._can_honor(run_req)
+
+    # confirm the failure is indicated
+    assert can_honor, error_msg
+    # confirm failure message indicates number of nodes requested as cause
+    assert error_msg is None, error_msg
