@@ -288,13 +288,13 @@ def test_node_prioritizer_multi_increment_validate_n() -> None:
     lock = threading.RLock()
     p = NodePrioritizer(nodes, lock)
 
-    # request 0 nodes, ensure we don't break
-    all_tracking_info = p.next_n(0, PrioritizerFilter.CPU)
-    assert len(all_tracking_info) == 0
+    # # request 0 nodes, ensure we don't break
+    # all_tracking_info = p.next_n(0, PrioritizerFilter.CPU)
+    # assert len(all_tracking_info) == 0
 
-    # request negative node count, confirm we don't break
-    all_tracking_info = p.next_n(-1, PrioritizerFilter.CPU)
-    assert len(all_tracking_info) == 0
+    # # request negative node count, confirm we don't break
+    # all_tracking_info = p.next_n(-1, PrioritizerFilter.CPU)
+    # assert len(all_tracking_info) == 0
 
     # we have 8 total cpu nodes available... request too many nodes
     all_tracking_info = p.next_n(9, PrioritizerFilter.CPU)
@@ -392,7 +392,7 @@ def test_node_prioritizer_decrement_floor() -> None:
         assert tracking_info[0] == 0
 
 
-@pytest.mark.parametrize("num_requested", [0, 1, 2, 3])
+@pytest.mark.parametrize("num_requested", [1, 2, 3])
 def test_node_prioritizer_multi_increment_subheap(num_requested: int) -> None:
     """Verify that retrieving multiple nodes via `next_n_from` API correctly
     increments reference counts and returns appropriate results
@@ -446,3 +446,105 @@ def test_node_prioritizer_multi_increment_subheap_assigned() -> None:
 
     # w/0,2 assigned, nothing can be returned
     assert len(all_tracking_info) == 0
+
+
+def test_node_prioritizer_empty_subheap_next_from() -> None:
+    """Verify that retrieving multiple nodes via `next_n_from` API does
+    not allow an empty host list"""
+
+    num_cpu_nodes, num_gpu_nodes = 8, 0
+    cpu_hosts, gpu_hosts = mock_node_hosts(num_cpu_nodes, num_gpu_nodes)
+    nodes = mock_node_builder(num_cpu_nodes, num_gpu_nodes)
+
+    lock = threading.RLock()
+    p = NodePrioritizer(nodes, lock)
+
+    # Mark some nodes as dirty to verify retrieval
+    p.increment(cpu_hosts[0])
+    p.increment(cpu_hosts[2])
+
+    # hostnames = [cpu_hosts[0], cpu_hosts[2]]
+    hostnames = []
+
+    # request n == {num_requested} nodes from set of 3 available
+    num_requested = 1
+    with pytest.raises(ValueError) as ex:
+        p.next_from(hostnames)
+
+    assert "No host names provided" == ex.value.args[0]
+
+
+def test_node_prioritizer_empty_subheap_next_n_from() -> None:
+    """Verify that retrieving multiple nodes via `next_n_from` API does
+    not allow an empty host list"""
+
+    num_cpu_nodes, num_gpu_nodes = 8, 0
+    cpu_hosts, gpu_hosts = mock_node_hosts(num_cpu_nodes, num_gpu_nodes)
+    nodes = mock_node_builder(num_cpu_nodes, num_gpu_nodes)
+
+    lock = threading.RLock()
+    p = NodePrioritizer(nodes, lock)
+
+    # Mark some nodes as dirty to verify retrieval
+    p.increment(cpu_hosts[0])
+    p.increment(cpu_hosts[2])
+
+    # hostnames = [cpu_hosts[0], cpu_hosts[2]]
+    hostnames = []
+
+    # request n == {num_requested} nodes from set of 3 available
+    num_requested = 1
+    with pytest.raises(ValueError) as ex:
+        p.next_n_from(num_requested, hostnames)
+
+    assert "No host names provided" == ex.value.args[0]
+
+
+@pytest.mark.parametrize("num_requested", [-100, -1, 0])
+def test_node_prioritizer_empty_subheap_next_n(num_requested: int) -> None:
+    """Verify that retrieving a node via `next_n` API does
+    not allow a request with num_items < 1"""
+
+    num_cpu_nodes, num_gpu_nodes = 8, 0
+    cpu_hosts, gpu_hosts = mock_node_hosts(num_cpu_nodes, num_gpu_nodes)
+    nodes = mock_node_builder(num_cpu_nodes, num_gpu_nodes)
+
+    lock = threading.RLock()
+    p = NodePrioritizer(nodes, lock)
+
+    # Mark some nodes as dirty to verify retrieval
+    p.increment(cpu_hosts[0])
+    p.increment(cpu_hosts[2])
+
+    # hostnames = [cpu_hosts[0], cpu_hosts[2]]
+
+    # request n == {num_requested} nodes from set of 3 available
+    with pytest.raises(ValueError) as ex:
+        p.next_n(num_requested)
+
+    assert "Number of items requested" in ex.value.args[0]
+
+
+@pytest.mark.parametrize("num_requested", [-100, -1, 0])
+def test_node_prioritizer_empty_subheap_next_n_from(num_requested: int) -> None:
+    """Verify that retrieving multiple nodes via `next_n_from` API does
+    not allow a request with num_items < 1"""
+
+    num_cpu_nodes, num_gpu_nodes = 8, 0
+    cpu_hosts, gpu_hosts = mock_node_hosts(num_cpu_nodes, num_gpu_nodes)
+    nodes = mock_node_builder(num_cpu_nodes, num_gpu_nodes)
+
+    lock = threading.RLock()
+    p = NodePrioritizer(nodes, lock)
+
+    # Mark some nodes as dirty to verify retrieval
+    p.increment(cpu_hosts[0])
+    p.increment(cpu_hosts[2])
+
+    hostnames = [cpu_hosts[0], cpu_hosts[2]]
+
+    # request n == {num_requested} nodes from set of 3 available
+    with pytest.raises(ValueError) as ex:
+        p.next_n_from(num_requested, hostnames)
+
+    assert "Number of items requested" in ex.value.args[0]

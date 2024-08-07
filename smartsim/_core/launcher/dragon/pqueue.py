@@ -29,6 +29,11 @@ import threading
 import typing as t
 
 from smartsim.error.errors import SmartSimError
+from smartsim.log import get_logger
+
+
+logger = get_logger(__name__)
+
 
 # tracking structure for [num_refs, node_name, is_dirty]
 _NodeRefCount = t.List[t.Union[int, str]]
@@ -101,6 +106,12 @@ class NodePrioritizer:
             tracking_info[0] = int(ref_count) + 1
             tracking_info[2] = 1
 
+    def _all_refs(self) -> t.List[_NodeRefCount]:
+        """Combine the CPU and GPU nodes into a single heap"""
+        refs = [*self._cpu_refs, *self._gpu_refs]
+        heapq.heapify(refs)
+        return refs
+
     def get_tracking_info(self, host: str) -> _NodeRefCount:
         return self._ref_map[host]
 
@@ -127,15 +138,27 @@ class NodePrioritizer:
 
     def next_from(self, hosts: t.List[str]) -> t.Optional[_NodeRefCount]:
         """Return the next node available given a set of desired hosts"""
+        if not hosts or len(hosts) == 0:
+            raise ValueError("No host names provided")
+
         sub_heap = self._create_sub_heap(hosts)
         return self._get_next_available_node(sub_heap)
 
     def next_n_from(self, num_items: int, hosts: t.List[str]) -> t.List[_NodeRefCount]:
-        """Return the next N available nodes given a set of desired hosts"""
+        """Return the next N available nodes given a set of desired hosts
+        :param num_items: the number of items to retrieve
+        :param hosts: the host names to filter on
+        :returns: a list of reference counts
+        :raises ValueError: if hosts list is empty"""
+        if not hosts or len(hosts) == 0:
+            raise ValueError("No host names provided")
+
+        if num_items < 1:
+            raise ValueError(f"Number of items requested {num_items} is invalid")
+
         sub_heap = self._create_sub_heap(hosts)
         return self._get_next_n_available_nodes(num_items, sub_heap)
 
-    @property
     def unassigned(
         self, heap: t.Optional[t.List[_NodeRefCount]] = None
     ) -> t.List[_NodeRefCount]:
@@ -145,7 +168,6 @@ class NodePrioritizer:
 
         return [node for node in heap if node[0] == 0]
 
-    @property
     def assigned(
         self, heap: t.Optional[t.List[_NodeRefCount]] = None
     ) -> t.List[_NodeRefCount]:
@@ -163,22 +185,19 @@ class NodePrioritizer:
         num_nodes = len(self._ref_map.keys())
 
         if num_items < 1:
-            # msg = f"Unable to satisfy request for less than 1 node"
+            # msg = f"Cannot satisfy request for less than 1 node"
             # raise ValueError(msg)
             return False
 
         if num_nodes < num_items:
-            # msg = f"Unable to satisfy request for {n} nodes from pool of {num_nodes}"
+            # msg = f"Cannot satisfy request for {n} nodes from pool of {num_nodes}"
             # raise ValueError(msg)
             return False
 
-        num_open = (
-            len(self.unassigned()) if heap is None else len(self.unassigned(heap))
-        )
+        num_open = len(self.unassigned(heap))
         if num_open < num_items:
-            # msg = "Unable to satisfy request for "
-            # f"{n} nodes from {num_nodes} available"
-            # raise ValueError(msg)
+            msg = f"Cannot satisfy request for {num_items} nodes from {num_open} available"
+            logger.warning(msg)
             return False
 
         return True
@@ -228,14 +247,20 @@ class NodePrioritizer:
         :returns: Collection of reserved nodes"""
         next_nodes: t.List[_NodeRefCount] = []
 
+        if num_items < 1:
+            raise ValueError(f"Number of items requested {num_items} is invalid")
+
         if not self._check_satisfiable_n(num_items, heap):
             return next_nodes
 
         # TODO: convert return type to an actual node or the hostname
-        next_node: t.Optional[_NodeRefCount] = self._get_next_available_node(heap)
-        while len(next_nodes) < num_items and next_node is not None:
-            next_nodes.append(next_node)
+
+        while len(next_nodes) < num_items:
             next_node = self._get_next_available_node(heap)
+            if next_node:
+                next_nodes.append(next_node)
+            else:
+                break
 
         return next_nodes
 
@@ -256,7 +281,7 @@ class NodePrioritizer:
         return None
 
     def next_n(
-        self, num_items: int = 1, filter_on: PrioritizerFilter = PrioritizerFilter.CPU
+        self, num_items: int = 1, filter_on: t.Optional[PrioritizerFilter] = None
     ) -> t.List[_NodeRefCount]:
         """Find the next N available nodes w/least amount of references using
         the supplied filter to target a specific node capability
@@ -265,5 +290,9 @@ class NodePrioritizer:
         heap = self._cpu_refs
         if filter_on == PrioritizerFilter.GPU:
             heap = self._gpu_refs
+        elif filter_on == PrioritizerFilter.CPU:
+            heap = self._cpu_refs
+        else:
+            heap = self._all_refs()
 
         return self._get_next_n_available_nodes(num_items, heap)

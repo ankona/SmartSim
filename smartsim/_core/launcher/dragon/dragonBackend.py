@@ -45,7 +45,7 @@ import dragon.native.process as dragon_process
 import dragon.native.process_group as dragon_process_group
 import dragon.native.machine as dragon_machine
 
-from smartsim._core.launcher.dragon.pqueue import NodePrioritizer
+from smartsim._core.launcher.dragon.pqueue import NodePrioritizer, PrioritizerFilter
 
 # pylint: enable=import-error
 # isort: on
@@ -211,13 +211,15 @@ class DragonBackend:
 
     @property
     def assigned_steps(self) -> dict[str, str]:
-        return self._assigned_steps
+        # return self._assigned_steps
+        return self._allocated_hosts
 
     # todo: remove?
     @property
-    def free_hosts(self) -> t.Deque[str]:  # todo: swap to dict[str, str]:
+    def free_hosts(self) -> t.List[str]:  # todo: swap to dict[str, str]:
         with self._queue_lock:
-            return self._free_hosts
+            # return self._free_hosts
+            return self._prioritizer.unassigned()
 
     # @property
     # def free_hosts(self) -> t.List[str]:
@@ -245,7 +247,7 @@ class DragonBackend:
             """List of hosts on which steps can be launched"""
             self._allocated_hosts: t.Dict[str, str] = {}
             # todo: replace self._allocated_hosts w/self._assigned_steps
-            self._assigned_steps: t.Dict[str, str] = {}
+            # self._assigned_steps: t.Dict[str, str] = {}
             """Mapping of hosts on which a step is already running to step ID"""
 
             self._ref_map: t.Dict[str, _NodeRefCount] = {}
@@ -460,33 +462,49 @@ class DragonBackend:
         num_hosts: int = request.nodes  # or 1  # todo - make at least 1 again
 
         with self._queue_lock:
-            # if num_hosts <= 0 or num_hosts > len(self._hosts):
-            #     return None
-
-            # if request.hostlist:
-            #     tracking_info = self._prioritizer.next_n_from(
-            #         num_hosts, [host for host in request.hostlist.split(",") if host]
-            #     )
-            # else:
-            #     tracking_info = self._prioritizer.next_n(num_hosts)
-
-            # # give back the list of node names
-            # to_allocate = [str(info[1]) for info in tracking_info]
-
-            # for host in to_allocate:
-            #     self._assigned_steps[host] = step_id
-
-            # return to_allocate
-            if num_hosts <= 0 or num_hosts > len(self._free_hosts):
+            if num_hosts <= 0 or num_hosts > len(self._hosts):
+                logger.debug(
+                    f"The number of requested hosts ({num_hosts}) is invalid or"
+                    f" cannot be satisfied with {len(self._hosts)} available nodes"
+                )
                 return None
 
-            to_allocate = []
-            for _ in range(num_hosts):
-                host = self._free_hosts.popleft()
+            hosts = []
+            if request.hostlist:
+                # convert the comma-separated argument into a real list
+                hosts = [host for host in request.hostlist.split(",") if host]
+
+            if hosts:
+                reference_counts = self._prioritizer.next_n_from(num_hosts, hosts)
+            else:
+                filter_on: t.Optional[PrioritizerFilter] = None
+                if request.policy and request.policy.gpu_affinity:
+                    filter_on = PrioritizerFilter.GPU
+                reference_counts = self._prioritizer.next_n(num_hosts, filter_on)
+
+            if len(reference_counts) < num_hosts:
+                # exit if the prioritizer can't identify enough nodes
+                return None
+
+            to_allocate = [ref_counter[1] for ref_counter in reference_counts]
+
+            # track assigning this step to each node
+            for host in to_allocate:
+                # self._assigned_steps[host] = step_id
                 self._allocated_hosts[host] = step_id
-                to_allocate.append(host)
 
             return to_allocate
+
+            # if num_hosts <= 0 or num_hosts > len(self._free_hosts):
+            #     return None
+
+            # to_allocate = []
+            # for _ in range(num_hosts):
+            #     # host = self._free_hosts.popleft()
+            #     self._allocated_hosts[host] = step_id
+            #     to_allocate.append(host)
+
+            # return to_allocate
 
     @staticmethod
     def _create_redirect_workers(
@@ -769,7 +787,7 @@ class DragonBackend:
                         logger.debug(f"Releasing host {host}")
                         try:
                             self._allocated_hosts.pop(host)  # todo: remove
-                            self._assigned_steps.pop(host)
+                            # self._assigned_steps.pop(host)
                             self._prioritizer.decrement(host)
                         except KeyError:
                             logger.error(f"Tried to free a non-allocated host: {host}")

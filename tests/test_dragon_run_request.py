@@ -276,7 +276,7 @@ def test_run_request(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert dragon_backend._running_steps == [step_id]
     assert len(dragon_backend._queued_steps) == 0
-    assert len(dragon_backend._free_hosts) == 1
+    assert len(dragon_backend.free_hosts) == 1
     assert dragon_backend._allocated_hosts[dragon_backend.hosts[0]] == step_id
     assert dragon_backend._allocated_hosts[dragon_backend.hosts[1]] == step_id
     # assert dragon_backend._assigned_steps[dragon_backend.hosts[0]] == step_id
@@ -290,7 +290,7 @@ def test_run_request(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert dragon_backend._running_steps == [step_id]
     assert len(dragon_backend._queued_steps) == 0
-    assert len(dragon_backend._free_hosts) == 1
+    assert len(dragon_backend.free_hosts) == 1
     assert dragon_backend._allocated_hosts[dragon_backend.hosts[0]] == step_id
     assert dragon_backend._allocated_hosts[dragon_backend.hosts[1]] == step_id
     # assert dragon_backend._assigned_steps[dragon_backend.hosts[0]] == step_id
@@ -448,7 +448,7 @@ def test_stop_request(monkeypatch: pytest.MonkeyPatch) -> None:
         == SmartSimStatus.STATUS_CANCELLED
     )
 
-    assert len(dragon_backend._assigned_steps) == 0
+    assert len(dragon_backend._allocated_hosts) == 0
     assert len(dragon_backend._free_hosts) == 3
 
 
