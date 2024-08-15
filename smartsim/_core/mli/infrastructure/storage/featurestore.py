@@ -24,17 +24,23 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import enum
 import typing as t
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
+from smartsim.error.errors import SmartSimError
 from smartsim.log import get_logger
 
 logger = get_logger(__name__)
 
 
+class ReservedKeys(str, enum.Enum):
+    MLI_NOTIFY_CONSUMERS = "_SMARTSIM_MLI_NOTIFY_CONSUMERS"
+
+
 @dataclass(frozen=True)
-class FeatureStoreKey:
+class FeatureStoreKey(BaseModel):
     """A key,descriptor pair enabling retrieval of an item from a feature store"""
 
     key: str
@@ -56,6 +62,21 @@ class FeatureStoreKey:
 class FeatureStore(ABC):
     """Abstract base class providing the common interface for retrieving
     values from a feature store implementation"""
+
+    def __init__(self) -> None:
+        self._reserved_write_enabled = False
+
+    def _check_reserved(self, key) -> None:
+        """A utility method used to verify access to write to a reserved key
+        in the FeatureStore. Used by subclasses in __setitem___ implementations
+
+        :param key: a key to compare to the reserved keys
+        :raises SmartSimError: if the key is reserved"""
+        if key in ReservedKeys and not self._reserved_write_enabled:
+            raise SmartSimError(
+                "Use of reserved key denied. "
+                "Unable to overwrite system configuration"
+            )
 
     @abstractmethod
     def __getitem__(self, key: str) -> t.Union[str, bytes]:

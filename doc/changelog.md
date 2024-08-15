@@ -13,6 +13,7 @@ Jump to:
 
 Description
 
+- Implement asynchronous notifications for shared data
 - Remove pydantic dependency from MLI code
 - Update MLI environment variables using new naming convention
 - Reduce a copy by using torch.from_numpy instead of torch.tensor
