@@ -66,7 +66,7 @@ class FeatureStore(ABC):
     def __init__(self) -> None:
         self._reserved_write_enabled = False
 
-    def _check_reserved(self, key) -> None:
+    def _check_reserved(self, key: str) -> None:
         """A utility method used to verify access to write to a reserved key
         in the FeatureStore. Used by subclasses in __setitem___ implementations
 

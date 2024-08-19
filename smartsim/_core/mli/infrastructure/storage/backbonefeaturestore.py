@@ -24,9 +24,9 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from collections import abc, defaultdict, deque
 import enum
 import typing as t
+from collections import defaultdict, deque
 
 from attr import dataclass
 
@@ -66,22 +66,21 @@ class BackboneFeatureStore(DragonFeatureStore):
 
         :returns: the list of descriptors"""
         if ReservedKeys.MLI_NOTIFY_CONSUMERS in self:
-            return self[ReservedKeys.MLI_NOTIFY_CONSUMERS]
+            stored_consumers = self[ReservedKeys.MLI_NOTIFY_CONSUMERS]
+            return str(stored_consumers).split(",")
         return []
 
     @notification_channels.setter
-    def notification_channels(
-        self, value: t.Sequence[str]
-    ) -> t.Sequence[CommChannelBase]:
-        self[ReservedKeys.MLI_NOTIFY_CONSUMERS] = value
+    def notification_channels(self, value: t.Sequence[str]) -> None:
+        self[ReservedKeys.MLI_NOTIFY_CONSUMERS] = ",".join(value)
 
 
 class EventTypes(str, enum.Enum):
     """Predefined event types raised by SmartSim backend"""
 
-    CONSUMER_CREATED: str = enum.auto()
-    FEATURE_STORE_WRITTEN: str = enum.auto()
-    UNKNOWN: str = enum.auto()
+    CONSUMER_CREATED: str = "consumer-created"
+    FEATURE_STORE_WRITTEN: str = "feature-store-written"
+    UNKNOWN: str = "unknown"
 
 
 @dataclass
@@ -244,29 +243,37 @@ class EventBroadcaster:
         self._log_broadcast_start()
 
         num_sent: int = 0
+        next_event: t.Optional[EventBase] = None
 
         for descriptor in map(str, self._descriptors):
-            try:
-                while event := self._event_buffer.pop():
-                    event_bytes = bytes(event)
+            next_event = self._event_buffer.pop()
 
-                    comm_channel = self._channel_cache[descriptor]
+            while next_event is not None:
+                event_bytes = bytes(next_event)
+                comm_channel = self._channel_cache[descriptor]
+                try:
                     if comm_channel is None:
                         comm_channel = self._channel_factory(descriptor)
                         self._channel_cache[descriptor] = comm_channel
+
                     comm_channel.send(event_bytes)
                     num_sent += 1
                     self._num_discards = 0
-            except IndexError:
-                logger.debug(f"Event buffer exhausted")
-            except KeyError:
-                logger.error(
-                    f"Cannot broadcast to unknown channel: {descriptor}", exc_info=True
-                )
-            except Exception as ex:
-                logger.error(
-                    f"Broadcast failed for channel: {descriptor}", exc_info=True
-                )
+                except KeyError:
+                    logger.error(
+                        f"Cannot broadcast to unknown channel: {descriptor}",
+                        exc_info=True,
+                    )
+                except Exception:
+                    logger.error(
+                        f"Broadcast failed for channel: {descriptor}", exc_info=True
+                    )
+
+                try:
+                    next_event = self._event_buffer.pop()
+                except IndexError:
+                    next_event = None
+                    logger.debug("Event buffer exhausted")
 
         return num_sent
 
@@ -312,16 +319,23 @@ class EventConsumer:
         filter_set = [*self._global_filters, *filters]
         messages: t.List[t.Any] = []
 
-        # todo: need to be able to receive a bunch of messages at once, not just one
-        while msg:
-            msg: EventBase = self._comm_channel.recv()  # todo: need a timeout here
-            if not msg or len(msg) == 0:
-                break
+        # todo: need a timeout on both calls to `.recv`
+        msg_bytes = self._comm_channel.recv()
+        # todo: convert bytes to message
+        msg: t.Optional[EventBase] = None
+        if msg_bytes:
+            _ = str(msg_bytes)
+
+        while msg is not None:
+            # if not msg or len(msg) == 0:
+            #     break
 
             # skip any messages not passing a filter
             if filter_set and msg.type not in filter_set:
                 continue
 
             messages.append(msg)
+            msg_bytes = self._comm_channel.recv()  # todo: timeout
+            msg = None
 
         return messages

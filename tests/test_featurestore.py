@@ -42,6 +42,7 @@ from smartsim._core.mli.infrastructure.storage.backbonefeaturestore import (
 from smartsim._core.mli.infrastructure.storage.dragonfeaturestore import (
     DragonFeatureStore,
 )
+from smartsim._core.mli.infrastructure.storage.featurestore import ReservedKeys
 from smartsim._core.utils import serialize
 from smartsim.database import Orchestrator
 from smartsim.entity import Model
@@ -51,9 +52,6 @@ from smartsim.settings import RunSettings
 from smartsim.status import SmartSimStatus
 from tests.mli.channel import FileSystemCommChannel
 from tests.mli.featurestore import FileSystemFeatureStore, MemoryFeatureStore
-
-from smartsim._core.mli.infrastructure.storage.featurestore import ReservedKeys
-
 
 if t.TYPE_CHECKING:
     import conftest
