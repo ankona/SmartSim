@@ -251,9 +251,7 @@ def test_eventpublisher_broadcast_buffer_discard(
     # NOTE: we're not putting any consumers into the backbone here!
     # this should causes rolling buffering we can verify
     backbone = BackboneFeatureStore(mock_storage)
-
     event = OnCreateConsumer(consumer_descriptor)
-
     publisher = EventBroadcaster(backbone, buffer_size=buffer_size)
     num_receivers = 0
 
@@ -291,8 +289,6 @@ def test_eventpublisher_broadcast_to_empty_consumer_list(test_dir: str) -> None:
     :param test_dir: pytest fixture automatically generating unique working
     directories for individual test outputs"""
     storage_path = pathlib.Path(test_dir) / "features"
-    event_path = pathlib.Path(test_dir) / "events"
-
     mock_storage = {}
 
     # note: file-system descriptors are just paths
@@ -319,15 +315,12 @@ def test_eventpublisher_broadcast_to_empty_consumer_list(test_dir: str) -> None:
 
 
 def test_eventpublisher_broadcast_empties_buffer(test_dir: str) -> None:
-    """Verify that a successful broadcast works through the event
-    buffer and reports the correct number of messages sent
+    """Verify that a successful broadcast clears messages from the event
+    buffer when a new message is sent and consumers are registered
 
     :param test_dir: pytest fixture automatically generating unique working
     directories for individual test outputs"""
     storage_path = pathlib.Path(test_dir) / "features"
-    event_path = pathlib.Path(test_dir) / "events"
-
-    comm_channel = FileSystemCommChannel(event_path)
     mock_storage = {}
 
     # note: file-system descriptors are just paths
@@ -343,21 +336,68 @@ def test_eventpublisher_broadcast_empties_buffer(test_dir: str) -> None:
     # mock building up some buffered events
     num_buffered_events = 14
     for i in range(num_buffered_events):
-        event = OnCreateConsumer(consumer_descriptor / str(i))
+        event = OnCreateConsumer(storage_path / f"test-consumer-{str(i)}")
         publisher._event_buffer.append(event)
 
-    event = OnCreateConsumer(consumer_descriptor / str(num_buffered_events + 1))
+    event0 = OnCreateConsumer(
+        storage_path / f"test-consumer-{str(num_buffered_events + 1)}"
+    )
 
-    num_receivers = publisher.send(event)
+    num_receivers = publisher.send(event0)
+    # 1 receiver x 15 total events == 15 events
     assert num_receivers == num_buffered_events + 1
+    assert publisher.num_discarded == 0
 
-    # registered_consumers = backbone[ReservedKeys.MLI_NOTIFY_CONSUMERS]
 
-    # # confirm that no consumers exist in backbone to send to
-    # assert registered_consumers
-    # # confirm that the broadcast reports no events published
-    # assert num_receivers == 0
-    # # confirm that the broadcast buffered the event for a later send
-    # assert publisher.num_buffered == 1
-    # # confirm that no events were discarded from the buffer
-    # assert publisher.num_discarded == 0
+@pytest.mark.parametrize(
+    "num_consumers, num_buffered, expected_num_sent",
+    [
+        pytest.param(0, 7, 0, id="0 x (7+1) - no consumers, multi-buffer"),
+        pytest.param(1, 7, 8, id="1 x (7+1) - single consumer, multi-buffer"),
+        pytest.param(2, 7, 16, id="2 x (7+1) - multi-consumer, multi-buffer"),
+        pytest.param(4, 4, 20, id="4 x (4+1) - multi-consumer, multi-buffer (odd #)"),
+        pytest.param(9, 0, 9, id="13 x (0+1) - multi-consumer, empty buffer"),
+    ],
+)
+def test_eventpublisher_broadcast_returns_total_sent(
+    test_dir: str, num_consumers: int, num_buffered: int, expected_num_sent: int
+) -> None:
+    """Verify that a successful broadcast returns the total number of events
+    sent, including buffered messages.
+
+    :param test_dir: pytest fixture automatically generating unique working
+    directories for individual test outputs
+    :param num_consumers: the number of consumers to mock setting up prior to send
+    :param num_buffered: the number of pre-buffered events to mock up
+    :param expected_num_sent: the expected result from calling send
+    """
+    storage_path = pathlib.Path(test_dir) / "features"
+    mock_storage = {}
+
+    # note: file-system descriptors are just paths
+    consumers = []
+    for i in range(num_consumers):
+        consumers.append(storage_path / f"test-consumer-{i}")
+
+    backbone = BackboneFeatureStore(mock_storage)
+    backbone.notification_channels = consumers
+
+    publisher = EventBroadcaster(
+        backbone, channel_factory=FileSystemCommChannel.from_descriptor
+    )
+
+    # mock building up some buffered events
+    for i in range(num_buffered):
+        event = OnCreateConsumer(storage_path / f"test-consumer-{str(i)}")
+        publisher._event_buffer.append(event)
+
+    assert publisher.num_buffered == num_buffered
+
+    # this event will trigger clearing anything already in buffer
+    event0 = OnCreateConsumer(storage_path / f"test-consumer-{num_buffered}")
+
+    # num_receivers should contain a number that computes w/all consumers and all events
+    num_receivers = publisher.send(event0)
+
+    assert num_receivers == expected_num_sent
+    assert publisher.num_discarded == 0

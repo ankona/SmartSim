@@ -248,12 +248,11 @@ class EventBroadcaster:
         self._log_broadcast_start()
 
         num_sent: int = 0
-        next_event: t.Optional[EventBase] = None
+        next_event: t.Optional[EventBase] = self._event_buffer.popleft()
 
-        for descriptor in map(str, self._descriptors):
-            next_event = self._event_buffer.pop()
-
-            while next_event is not None:
+        # send each event to every consumer
+        while next_event is not None:
+            for descriptor in map(str, self._descriptors):
                 event_bytes = bytes(next_event)
                 comm_channel = self._channel_cache[descriptor]
                 try:
@@ -274,11 +273,11 @@ class EventBroadcaster:
                         f"Broadcast failed for channel: {descriptor}", exc_info=True
                     )
 
-                try:
-                    next_event = self._event_buffer.pop()
-                except IndexError:
-                    next_event = None
-                    logger.debug("Event buffer exhausted")
+            try:
+                next_event = self._event_buffer.popleft()
+            except IndexError:
+                next_event = None
+                logger.debug("Event buffer exhausted")
 
         return num_sent
 
