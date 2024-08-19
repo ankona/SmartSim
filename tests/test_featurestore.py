@@ -36,8 +36,7 @@ from smartsim._core.config import CONFIG
 from smartsim._core.config.config import Config
 from smartsim._core.mli.infrastructure.storage.backbonefeaturestore import (
     BackboneFeatureStore,
-    EventPublisher,
-    EventTypes,
+    EventBroadcaster,
     OnCreateConsumer,
 )
 from smartsim._core.mli.infrastructure.storage.dragonfeaturestore import (
@@ -161,7 +160,7 @@ def test_eventpublisher_broadcast_no_factory(test_dir: str) -> None:
     event = OnCreateConsumer(consumer_descriptor)
     buffer_size = 20
 
-    publisher = EventPublisher(backbone, buffer_size=buffer_size)
+    publisher = EventBroadcaster(backbone, buffer_size=buffer_size)
     num_receivers = 0
 
     # publishing this event without any known consumers registered should succeed
@@ -169,7 +168,7 @@ def test_eventpublisher_broadcast_no_factory(test_dir: str) -> None:
     consumer_descriptor = storage_path / f"test-consumer"
     event = OnCreateConsumer(consumer_descriptor)
 
-    num_receivers += publisher.broadcast(event)
+    num_receivers += publisher.send(event)
 
     # confirm no changes to the backbone occur when fetching the empty consumer key
     key_in_features_store = ReservedKeys.MLI_NOTIFY_CONSUMERS in backbone
@@ -199,7 +198,7 @@ def test_eventpublisher_broadcast_buffer_not_exceeded(test_dir: str) -> None:
     event = OnCreateConsumer(consumer_descriptor)
     buffer_size = 20
 
-    publisher = EventPublisher(backbone, buffer_size=buffer_size)
+    publisher = EventBroadcaster(backbone, buffer_size=buffer_size)
     num_receivers = 0
 
     # publishing this event without any known consumers registered should succeed
@@ -209,7 +208,7 @@ def test_eventpublisher_broadcast_buffer_not_exceeded(test_dir: str) -> None:
         consumer_descriptor = storage_path / f"test-consumer-{i}"
         event = OnCreateConsumer(consumer_descriptor)
 
-        num_receivers += publisher.broadcast(event)
+        num_receivers += publisher.send(event)
 
     # confirm no changes to the backbone occur when fetching the empty consumer key
     key_in_features_store = ReservedKeys.MLI_NOTIFY_CONSUMERS in backbone
@@ -257,7 +256,7 @@ def test_eventpublisher_broadcast_buffer_discard(
 
     event = OnCreateConsumer(consumer_descriptor)
 
-    publisher = EventPublisher(backbone, buffer_size=buffer_size)
+    publisher = EventBroadcaster(backbone, buffer_size=buffer_size)
     num_receivers = 0
 
     all_events = []
@@ -268,7 +267,7 @@ def test_eventpublisher_broadcast_buffer_discard(
         event = OnCreateConsumer(consumer_descriptor)
         all_events.append(event)
 
-        num_receivers += publisher.broadcast(event)
+        num_receivers += publisher.send(event)
 
     # confirm that the buffer does not grow beyond configured maximum
     assert publisher.num_buffered == buffer_size
@@ -306,8 +305,8 @@ def test_eventpublisher_broadcast_to_empty_consumer_list(test_dir: str) -> None:
     backbone.notification_channels = (consumer_descriptor,)
 
     event = OnCreateConsumer(consumer_descriptor)
-    publisher = EventPublisher(backbone)
-    num_receivers = publisher.broadcast(event)
+    publisher = EventBroadcaster(backbone)
+    num_receivers = publisher.send(event)
 
     registered_consumers = backbone[ReservedKeys.MLI_NOTIFY_CONSUMERS]
 
@@ -339,7 +338,7 @@ def test_eventpublisher_broadcast_empties_buffer(test_dir: str) -> None:
     backbone = BackboneFeatureStore(mock_storage)
     backbone.notification_channels = (consumer_descriptor,)
 
-    publisher = EventPublisher(
+    publisher = EventBroadcaster(
         backbone, channel_factory=FileSystemCommChannel.from_descriptor
     )
 
@@ -351,7 +350,7 @@ def test_eventpublisher_broadcast_empties_buffer(test_dir: str) -> None:
 
     event = OnCreateConsumer(consumer_descriptor / str(num_buffered_events + 1))
 
-    num_receivers = publisher.broadcast(event)
+    num_receivers = publisher.send(event)
     assert num_receivers == num_buffered_events + 1
 
     # registered_consumers = backbone[ReservedKeys.MLI_NOTIFY_CONSUMERS]

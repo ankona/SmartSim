@@ -117,7 +117,7 @@ class OnCreateConsumer(EventBase):
     def __str__(self) -> str:
         """Convert the event to a string"""
         # todo: consider just using pickle
-        return f"{super().__repr__()}|{self.descriptor}"
+        return f"{str(super())}|{self.descriptor}"
 
 
 class OnWriteFeatureStore(EventBase):
@@ -136,10 +136,17 @@ class OnWriteFeatureStore(EventBase):
     def __str__(self) -> str:
         """Convert the event to a string"""
         # todo: consider just using pickle
-        return f"{super().__repr__()}|{self.descriptor}|{self.key}"
+        return f"{str(super())}|{self.descriptor}|{self.key}"
 
 
-class EventPublisher:
+class EventPublisher(t.Protocol):
+    """Core API of a class that publishes events"""
+
+    def send(self, event: EventBase) -> int:
+        """The send operation"""
+
+
+class EventBroadcaster:
     """Performs fan-out publishing of system events"""
 
     def __init__(
@@ -159,8 +166,8 @@ class EventPublisher:
         """The backbone feature store used to retrieve consumer descriptors"""
         self._channel_factory = channel_factory
         """A factory method used to instantiate channels from descriptors"""
-        self._channel_cache: t.Dict[str, CommChannelBase] = defaultdict(
-            lambda d: self._channel_factory(d)
+        self._channel_cache: t.Dict[str, t.Optional[CommChannelBase]] = defaultdict(
+            lambda: None
         )
         """A mapping of instantiated channels that can be re-used. Automatically 
         calls the channel factory if a descriptor is not already in the collection"""
@@ -217,10 +224,11 @@ class EventPublisher:
             f" and found {len(new_channels)} new channels"
         )
 
-    def broadcast(self, event: EventBase) -> int:
-        """Broadcasts an event to all registered event consumers
+    def _broadcast(self, event: EventBase) -> int:
+        """Broadcasts an event to all registered event consumers.
 
-        :param event: an event to publish"""
+        :param event: an event to publish
+        :return: the number of events broadcasted to consumers"""
         self._save_to_buffer(event)
 
         self._descriptors = set(self._backbone.notification_channels)
@@ -237,21 +245,38 @@ class EventPublisher:
 
         num_sent: int = 0
 
-        for descriptor in self._descriptors:
+        for descriptor in map(str, self._descriptors):
             try:
                 while event := self._event_buffer.pop():
                     event_bytes = bytes(event)
 
                     comm_channel = self._channel_cache[descriptor]
+                    if comm_channel is None:
+                        comm_channel = self._channel_factory(descriptor)
+                        self._channel_cache[descriptor] = comm_channel
                     comm_channel.send(event_bytes)
                     num_sent += 1
                     self._num_discards = 0
             except IndexError:
-                logger.debug(f"Completed sending ")
+                logger.debug(f"Event buffer exhausted")
+            except KeyError:
+                logger.error(
+                    f"Cannot broadcast to unknown channel: {descriptor}", exc_info=True
+                )
             except Exception as ex:
-                logger.error(f"Broadcast failed for channel: {descriptor}")
+                logger.error(
+                    f"Broadcast failed for channel: {descriptor}", exc_info=True
+                )
 
         return num_sent
+
+    def send(self, event: EventBase) -> int:
+        """Implementation of `send` method of the `EventPublisher` protocol. Publishes
+        the supplied event to all registered broadcast consumers
+
+        :param event: an event to publish
+        :returns: the number of events successfully published"""
+        return self._broadcast(event)
 
 
 class EventConsumer:
@@ -265,9 +290,10 @@ class EventConsumer:
     ) -> None:
         """Initialize the EventConsumer instance
 
-        :param comm_channel:
-        :param backbone:
-        :param filters:"""
+        :param comm_channel: communications channel to listen to for events
+        :param backbone: the MLI backbone feature store
+        :param filters: a list of event types to deliver. when empty, all
+        events will be delivered"""
         self._comm_channel = comm_channel
         self._backbone = backbone
         self._global_filters = filters or []
