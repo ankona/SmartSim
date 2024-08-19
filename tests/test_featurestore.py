@@ -401,3 +401,67 @@ def test_eventpublisher_broadcast_returns_total_sent(
 
     assert num_receivers == expected_num_sent
     assert publisher.num_discarded == 0
+
+
+def test_eventpublisher_prune_unused_consumer(test_dir: str) -> None:
+    """Verify that any unused consumers are pruned each time a new event is sent
+
+    :param test_dir: pytest fixture automatically generating unique working
+    directories for individual test outputs"""
+    storage_path = pathlib.Path(test_dir) / "features"
+    mock_storage = {}
+
+    # note: file-system descriptors are just paths
+    consumer_descriptor = storage_path / "test-consumer"
+
+    backbone = BackboneFeatureStore(mock_storage)
+
+    publisher = EventBroadcaster(
+        backbone, channel_factory=FileSystemCommChannel.from_descriptor
+    )
+
+    event = OnCreateConsumer(consumer_descriptor)
+
+    # the only registered cnosumer is in the event, expect no pruning
+    backbone.notification_channels = (consumer_descriptor,)
+
+    publisher.send(event)
+    assert str(consumer_descriptor) in publisher._channel_cache
+    assert len(publisher._channel_cache) == 1
+
+    # add a new descriptor for another event...
+    consumer_descriptor2 = storage_path / "test-consumer-2"
+    # ... and remove the old descriptor from the backbone when it's looked up
+    backbone.notification_channels = (consumer_descriptor2,)
+
+    event = OnCreateConsumer(consumer_descriptor2)
+
+    publisher.send(event)
+
+    assert str(consumer_descriptor2) in publisher._channel_cache
+    assert str(consumer_descriptor) not in publisher._channel_cache
+    assert len(publisher._channel_cache) == 1
+
+    # test multi-consumer pruning by caching some extra channels
+    prune0, prune1, prune2 = "abc", "def", "ghi"
+    publisher._channel_cache[prune0] = "doesnt-matter-if-it-is-pruned"
+    publisher._channel_cache[prune1] = "doesnt-matter-if-it-is-pruned"
+    publisher._channel_cache[prune2] = "doesnt-matter-if-it-is-pruned"
+
+    # add in one of our old channels so we prune the above items, send to these
+    backbone.notification_channels = (consumer_descriptor, consumer_descriptor2)
+
+    publisher.send(event)
+
+    assert str(consumer_descriptor2) in publisher._channel_cache
+    
+    # NOTE: we should NOT prune something that isn't used by this message but
+    # does appear in `backbone.notification_channels`
+    assert str(consumer_descriptor) in publisher._channel_cache
+
+    # confirm all of our items that were not in the notification channels are gone
+    for pruned in [prune0, prune1, prune2]:
+        assert pruned not in publisher._channel_cache
+
+    # confirm we have only the two expected items in the channel cache
+    assert len(publisher._channel_cache) == 2
