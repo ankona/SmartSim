@@ -125,7 +125,7 @@ def test_mli_consumers_read_by_backbone() -> None:
     backbone[ReservedKeys.MLI_NOTIFY_CONSUMERS] = expected_value
 
     # confirm reading via convenience method returns expected value
-    assert backbone.notification_channels == expected_value
+    assert backbone.notification_channels[0] == expected_value
 
 
 def test_mli_consumers_write_by_backbone() -> None:
@@ -134,12 +134,12 @@ def test_mli_consumers_write_by_backbone() -> None:
 
     mock_storage = {}
     backbone = BackboneFeatureStore(mock_storage)
-    expected_value = "value"
+    expected_value = ["value"]
 
     backbone.notification_channels = expected_value
 
     # confirm write using convenience method targets expected key
-    assert backbone[ReservedKeys.MLI_NOTIFY_CONSUMERS] == expected_value
+    assert backbone[ReservedKeys.MLI_NOTIFY_CONSUMERS] == ",".join(expected_value)
 
 
 def test_eventpublisher_broadcast_no_factory(test_dir: str) -> None:

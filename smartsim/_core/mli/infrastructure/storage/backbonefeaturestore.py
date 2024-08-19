@@ -71,8 +71,13 @@ class BackboneFeatureStore(DragonFeatureStore):
         return []
 
     @notification_channels.setter
-    def notification_channels(self, value: t.Sequence[str]) -> None:
-        self[ReservedKeys.MLI_NOTIFY_CONSUMERS] = ",".join(value)
+    def notification_channels(self, values: t.Sequence[str]) -> None:
+        """Set the notification channels to be sent events
+
+        :param values: the list of channel descriptors to save"""
+        self[ReservedKeys.MLI_NOTIFY_CONSUMERS] = ",".join(
+            [str(value) for value in values]
+        )
 
 
 class EventTypes(str, enum.Enum):
