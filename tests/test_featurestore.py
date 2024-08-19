@@ -37,6 +37,7 @@ from smartsim._core.config.config import Config
 from smartsim._core.mli.infrastructure.storage.backbonefeaturestore import (
     BackboneFeatureStore,
     EventBroadcaster,
+    EventConsumer,
     OnCreateConsumer,
 )
 from smartsim._core.mli.infrastructure.storage.dragonfeaturestore import (
@@ -454,7 +455,7 @@ def test_eventpublisher_prune_unused_consumer(test_dir: str) -> None:
     publisher.send(event)
 
     assert str(consumer_descriptor2) in publisher._channel_cache
-    
+
     # NOTE: we should NOT prune something that isn't used by this message but
     # does appear in `backbone.notification_channels`
     assert str(consumer_descriptor) in publisher._channel_cache
@@ -465,3 +466,38 @@ def test_eventpublisher_prune_unused_consumer(test_dir: str) -> None:
 
     # confirm we have only the two expected items in the channel cache
     assert len(publisher._channel_cache) == 2
+
+
+def test_eventconsumer_receive(test_dir: str) -> None:
+    """Verify that a consumer retrieves a message from the given channel
+
+    :param test_dir: pytest fixture automatically generating unique working
+    directories for individual test outputs"""
+    storage_path = pathlib.Path(test_dir) / "features"
+    storage_path.mkdir(parents=True, exist_ok=True)
+
+    mock_storage = {}
+
+    # note: file-system descriptors are just paths
+    target_descriptor = str(storage_path / "test-consumer")
+
+    backbone = BackboneFeatureStore(mock_storage)
+    publisher = EventBroadcaster(
+        backbone, channel_factory=FileSystemCommChannel.from_descriptor
+    )
+    event = OnCreateConsumer(target_descriptor)
+    backbone.notification_channels = (target_descriptor,)
+
+    # send a message into the channel
+    num_sent = publisher.send(event)
+    assert num_sent > 0
+
+    comm_channel = FileSystemCommChannel.from_descriptor(target_descriptor)
+    consumer = EventConsumer(comm_channel, backbone)
+
+    all_received: t.List[OnCreateConsumer] = consumer.receive()
+    assert len(all_received) == 1
+
+    # verify we received the same event that was raised
+    assert all_received[0].type == event.type
+    assert all_received[0].descriptor == event.descriptor

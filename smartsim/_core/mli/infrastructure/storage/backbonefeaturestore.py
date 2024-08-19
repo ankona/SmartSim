@@ -25,6 +25,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import enum
+import pickle
 import typing as t
 from collections import defaultdict, deque
 
@@ -41,6 +42,7 @@ from smartsim._core.mli.infrastructure.storage.dragonfeaturestore import (
     DragonFeatureStore,
 )
 from smartsim._core.mli.infrastructure.storage.featurestore import ReservedKeys
+from smartsim.error.errors import SmartSimError
 from smartsim.log import get_logger
 
 logger = get_logger(__name__)
@@ -102,7 +104,8 @@ class EventBase:
         """Default conversion to bytes for an event required to publish
         messages using byte-oriented communication channels"""
         # todo: consider just using pickle
-        return bytes(str(self), encoding="utf-8")
+        # return bytes(str(self), encoding="utf-8")
+        return pickle.dumps(self)
 
 
 class OnCreateConsumer(EventBase):
@@ -297,7 +300,7 @@ class EventConsumer:
         self,
         comm_channel: CommChannelBase,
         backbone: BackboneFeatureStore,
-        filters: t.Optional[t.List[EventTypes]],
+        filters: t.Optional[t.List[EventTypes]] = None,
     ) -> None:
         """Initialize the EventConsumer instance
 
@@ -320,26 +323,34 @@ class EventConsumer:
         if filters is None:
             filters = []
 
-        filter_set = [*self._global_filters, *filters]
+        filter_set = {*self._global_filters, *filters}
         messages: t.List[t.Any] = []
 
         # todo: need a timeout on both calls to `.recv`
-        msg_bytes = self._comm_channel.recv()
-        # todo: convert bytes to message
+        msg_bytes_list = self._comm_channel.recv()
+
         msg: t.Optional[EventBase] = None
-        if msg_bytes:
-            _ = str(msg_bytes)
+        if msg_bytes_list:
+            # grab all messages that have queued up
+            for message in msg_bytes_list:
+                msg = pickle.loads(message)
 
         while msg is not None:
-            # if not msg or len(msg) == 0:
-            #     break
+            # collect all messages, or only those passing filters
+            if not filter_set or msg.type in filter_set:
+                messages.append(msg)
 
-            # skip any messages not passing a filter
-            if filter_set and msg.type not in filter_set:
-                continue
+            try:
+                # Check if any other messages exist in the channel
+                # todo: need a timeout on both calls to `.recv`
+                msg_bytes_list = self._comm_channel.recv()
 
-            messages.append(msg)
-            msg_bytes = self._comm_channel.recv()  # todo: timeout
-            msg = None
+                if msg_bytes_list:
+                    # grab all messages that have queued up
+                    for message in msg_bytes_list:
+                        msg = pickle.loads(message)
+            except SmartSimError:
+                logger.error("An error occurred while receiving channel content")
+                msg = None
 
         return messages

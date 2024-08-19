@@ -29,6 +29,7 @@ import threading
 import typing as t
 
 from smartsim._core.mli.comm.channel.channel import CommChannelBase
+from smartsim.error.errors import SmartSimError
 from smartsim.log import get_logger
 
 logger = get_logger(__name__)
@@ -64,27 +65,35 @@ class FileSystemCommChannel(CommChannelBase):
         with self._lock:
             self._file_path.write_bytes(value)
 
-    def recv(self) -> bytes:
+    def recv(self) -> t.List[bytes]:
         """Receieve a message through the underlying communication channel
 
-        :returns: the received message"""
+        :returns: the received message
+        :raises SmartSimError: if the descriptor points to a missing file"""
         with self._lock:
-            if self._file_path.exists():
-                incoming = self._file_path.read_bytes()
-                self._file_path.unlink()
-            return incoming
+            if not self._file_path.exists():
+                raise SmartSimError("Empty channel")
+
+            incoming = self._file_path.read_bytes()
+            rcv_path = self._file_path.with_suffix(".received")
+            self._file_path.rename(rcv_path)
+
+            return [incoming]
 
     @classmethod
     def from_descriptor(
         cls,
-        descriptor: str,
+        descriptor: t.Union[str, bytes],
     ) -> "FileSystemCommChannel":
         """A factory method that creates an instance from a descriptor string
 
         :param descriptor: The descriptor that uniquely identifies the resource
         :returns: An attached FileSystemCommChannel"""
         try:
-            path = pathlib.Path(descriptor)
+            if isinstance(descriptor, str):
+                path = pathlib.Path(descriptor)
+            else:
+                path = pathlib.Path(descriptor.decode("utf-8"))
             return FileSystemCommChannel(path)
         except:
             print(f"failed to create fs comm channel: {descriptor}")
