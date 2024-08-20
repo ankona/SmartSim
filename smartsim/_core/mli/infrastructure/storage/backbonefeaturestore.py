@@ -209,10 +209,12 @@ class EventBroadcaster:
 
     @property
     def num_buffered(self) -> int:
+        """Return the number of events currently buffered to send"""
         return len(self._event_buffer)
 
     @property
     def num_discarded(self) -> int:
+        """Return the number of events discarded from the buffer since the last send"""
         return self._num_discards
 
     def _save_to_buffer(self, event: EventBase) -> None:
