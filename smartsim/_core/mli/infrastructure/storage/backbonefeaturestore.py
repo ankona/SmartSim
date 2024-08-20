@@ -29,6 +29,7 @@ import pickle
 import typing as t
 import uuid
 from collections import defaultdict, deque
+from dataclasses import dataclass
 
 # pylint: disable=import-error
 # isort: off
@@ -89,83 +90,77 @@ class EventCategory(str, enum.Enum):
     UNKNOWN: str = "unknown"
 
 
-class EventBase(t.Protocol):
+@dataclass
+class EventBase:
     """Core API for an event"""
 
-    @property
-    def category(self) -> EventCategory:
-        """The event category for this event; may be used for addressing,
-        prioritization, or filtering of events by a event publisher/consumer"""
+    category: EventCategory
+    """The event category for this event; may be used for addressing,
+    prioritization, or filtering of events by a event publisher/consumer"""
 
-    @property
-    def uid(self) -> str:
-        """A unique identifier for this event"""
+    uid: str
+    """A unique identifier for this event"""
 
     def __bytes__(self) -> bytes:
         """Default conversion to bytes for an event required to publish
         messages using byte-oriented communication channels
 
         :returns: this entity encoded as bytes"""
+        return pickle.dumps(self)
+
+    def __str__(self) -> str:
+        """Convert the event to a string
+
+        :returns: a string representation of this instance"""
+        return f"{self.uid}|{self.category}"
 
 
 # @dataclass
-class OnCreateConsumer:
+class OnCreateConsumer(EventBase):
     """Publish this event when a new event consumer registration is required"""
 
+    descriptor: str
+    """Descriptor of the comm channel exposed by the consumer"""
+
     def __init__(self, descriptor: str) -> None:
+        """Initialize the event
+
+        :param descriptor: descriptor of the comm channel exposed by the consumer
+        """
+        super().__init__(EventCategory.CONSUMER_CREATED, str(uuid.uuid4()))
         self.descriptor = descriptor
-        """The descriptor of the comm channel exposed by the event consumer"""
-
-        self.category = EventCategory.CONSUMER_CREATED
-        """The event category for this event; may be used for addressing,
-        prioritization, or filtering of events by a event publisher/consumer"""
-
-        self.uid = str(uuid.uuid4())
-        """A unique identifier for this event"""
 
     def __str__(self) -> str:
         """Convert the event to a string
 
         :returns: a string representation of this instance"""
-        return f"{self.uid}|{self.category}|{self.descriptor}"
-
-    def __bytes__(self) -> bytes:
-        """Default conversion to bytes for an event required to publish
-        messages using byte-oriented communication channels
-
-        :returns: this entity encoded as bytes"""
-        return pickle.dumps(self)
+        return f"{str(super())}|{self.descriptor}"
 
 
-class OnWriteFeatureStore:
+class OnWriteFeatureStore(EventBase):
     """Publish this event when a feature store key is written"""
 
+    descriptor: str
+    """The descriptor of the feature store where the write occurred"""
+
+    key: str
+    """The key identifying where the write occurred"""
+
     def __init__(self, descriptor: str, key: str) -> None:
+        """Initialize the event
+
+        :param descriptor: The descriptor of the feature store where the write occurred
+        :param key: The key identifying where the write occurred
+        """
+        super().__init__(EventCategory.FEATURE_STORE_WRITTEN, str(uuid.uuid4()))
         self.descriptor = descriptor
-        """The descriptor of the feature store where the write occurred"""
-
         self.key = key
-        """The key for where the write occurred"""
-
-        self.category = EventCategory.FEATURE_STORE_WRITTEN
-        """The event category for this event; may be used for addressing,
-        prioritization, or filtering of events by a event publisher/consumer"""
-
-        self.uid = str(uuid.uuid4())
-        """A unique identifier for this event"""
 
     def __str__(self) -> str:
         """Convert the event to a string
 
         :returns: a string representation of this instance"""
-        return f"{self.uid}|{self.category}|{self.descriptor}|{self.key}"
-
-    def __bytes__(self) -> bytes:
-        """Default conversion to bytes for an event required to publish
-        messages using byte-oriented communication channels
-
-        :returns: this entity encoded as bytes"""
-        return pickle.dumps(self)
+        return f"{str(super())}|{self.descriptor}|{self.key}"
 
 
 class EventPublisher(t.Protocol):
