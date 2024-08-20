@@ -24,8 +24,10 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import base64
 import pathlib
 import threading
+import time
 import typing as t
 
 from smartsim._core.mli.comm.channel.channel import CommChannelBase
@@ -63,7 +65,10 @@ class FileSystemCommChannel(CommChannelBase):
             f"Channel {self.descriptor.decode('utf-8')} sending message to {self._file_path}"
         )
         with self._lock:
-            self._file_path.write_bytes(value)
+            # write as text so we can add newlines as delimiters
+            with open(self._file_path, "a") as fp:
+                encoded_value = base64.b64encode(value).decode("utf-8")
+                fp.write(f"{encoded_value}\n")
 
     def recv(self) -> t.List[bytes]:
         """Receieve a message through the underlying communication channel
@@ -71,14 +76,23 @@ class FileSystemCommChannel(CommChannelBase):
         :returns: the received message
         :raises SmartSimError: if the descriptor points to a missing file"""
         with self._lock:
+            messages: t.List[bytes] = []
             if not self._file_path.exists():
                 raise SmartSimError("Empty channel")
 
-            incoming = self._file_path.read_bytes()
-            rcv_path = self._file_path.with_suffix(".received")
+            # read as text so we can split on newlines
+            with open(self._file_path, "r") as fp:
+                lines = fp.readlines()
+
+            for line in lines:
+                event_bytes = base64.b64decode(line.encode("utf-8"))
+                messages.append(event_bytes)
+
+            # leave the file around for later review in tests
+            rcv_path = self._file_path.with_suffix(f".{time.time_ns()}")
             self._file_path.rename(rcv_path)
 
-            return [incoming]
+            return messages
 
     @classmethod
     def from_descriptor(
@@ -97,4 +111,4 @@ class FileSystemCommChannel(CommChannelBase):
             return FileSystemCommChannel(path)
         except:
             print(f"failed to create fs comm channel: {descriptor}")
-            raise  # changed to match other version in tests. may need to comment out
+            raise

@@ -619,17 +619,12 @@ def test_eventconsumer_receive(test_dir: str) -> None:
     target_descriptor = str(storage_path / "test-consumer")
 
     backbone = BackboneFeatureStore(mock_storage)
-    publisher = EventBroadcaster(
-        backbone, channel_factory=FileSystemCommChannel.from_descriptor
-    )
-    event = OnCreateConsumer(target_descriptor)
-    backbone.notification_channels = (target_descriptor,)
-
-    # send a message into the channel
-    num_sent = publisher.send(event)
-    assert num_sent > 0
-
     comm_channel = FileSystemCommChannel.from_descriptor(target_descriptor)
+    event = OnCreateConsumer(target_descriptor)
+
+    # simulate a sent event by writing directly to the input comm channel
+    comm_channel.send(bytes(event))
+
     consumer = EventConsumer(comm_channel, backbone)
 
     all_received: t.List[OnCreateConsumer] = consumer.receive()
@@ -638,3 +633,66 @@ def test_eventconsumer_receive(test_dir: str) -> None:
     # verify we received the same event that was raised
     assert all_received[0].type == event.type
     assert all_received[0].descriptor == event.descriptor
+
+
+@pytest.mark.parametrize("num_sent", [0, 1, 2, 4, 8, 16])
+def test_eventconsumer_receive_multi(test_dir: str, num_sent: int) -> None:
+    """Verify that a consumer retrieves mutliple message from the given channel
+
+    :param test_dir: pytest fixture automatically generating unique working
+    directories for individual test outputs
+    :param num_sent: parameterized value used to vary the number of events
+    that are enqueued and validations are checked at multiple queue sizes"""
+    storage_path = pathlib.Path(test_dir) / "features"
+    storage_path.mkdir(parents=True, exist_ok=True)
+
+    mock_storage = {}
+
+    # note: file-system descriptors are just paths
+    target_descriptor = str(storage_path / "test-consumer")
+
+    backbone = BackboneFeatureStore(mock_storage)
+    comm_channel = FileSystemCommChannel.from_descriptor(target_descriptor)
+
+    # simulate multiple sent events by writing directly to the input comm channel
+    for _ in range(num_sent):
+        event = OnCreateConsumer(target_descriptor)
+        comm_channel.send(bytes(event))
+
+    consumer = EventConsumer(comm_channel, backbone)
+
+    all_received: t.List[OnCreateConsumer] = consumer.receive()
+    assert len(all_received) == num_sent
+
+    # # verify we received the same event that was raised
+    # assert all_received[0].type == event.type
+    # assert all_received[0].descriptor == event.descriptor
+
+
+def test_eventconsumer_receive_empty(test_dir: str) -> None:
+    """Verify that a consumer receiving an empty message ignores the
+    message and continues processing
+
+    :param test_dir: pytest fixture automatically generating unique working
+    directories for individual test outputs"""
+    storage_path = pathlib.Path(test_dir) / "features"
+    storage_path.mkdir(parents=True, exist_ok=True)
+
+    mock_storage = {}
+
+    # note: file-system descriptors are just paths
+    target_descriptor = str(storage_path / "test-consumer")
+
+    backbone = BackboneFeatureStore(mock_storage)
+    comm_channel = FileSystemCommChannel.from_descriptor(target_descriptor)
+    # event = OnCreateConsumer(target_descriptor)
+
+    # simulate a sent event by writing directly to the input comm channel
+    comm_channel.send(bytes(b""))
+
+    consumer = EventConsumer(comm_channel, backbone)
+
+    messages = consumer.receive()
+
+    # the messages array should be empty
+    assert not messages
