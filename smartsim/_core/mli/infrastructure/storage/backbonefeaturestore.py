@@ -178,7 +178,7 @@ class EventBroadcaster:
         )
         """A mapping of instantiated channels that can be re-used. Automatically 
         calls the channel factory if a descriptor is not already in the collection"""
-        self._event_buffer: t.Deque[EventBase] = deque(maxlen=buffer_size)
+        self._event_buffer: t.Deque[bytes] = deque(maxlen=buffer_size)
         """A buffer for storing events when a consumer list is not found. Buffer size
         can be fixed by passing the `buffer_size` parameter."""
         self._num_discards: int = 0
@@ -199,13 +199,19 @@ class EventBroadcaster:
         return self._num_discards
 
     def _save_to_buffer(self, event: EventBase) -> None:
-        """Places a new event in the buffer until full. Continues adding events to
-        the buffer using a first-in, first-discarded strategy."""
+        """Places a serialized event in the buffer until full. Continues adding events
+        to the buffer using a first-in, first-discarded strategy.
+
+        :param event: The event to serialize and buffer"""
         if len(self._event_buffer) == self._buffer_size:
             self._event_buffer.popleft()
             self._num_discards += 1
 
-        self._event_buffer.append(event)
+        try:
+            event_bytes = bytes(event)
+            self._event_buffer.append(event_bytes)
+        except Exception as ex:
+            raise ValueError("Unable to serialize event for sending") from ex
 
     def _log_broadcast_start(self) -> None:
         """Logs broadcast statistics"""
@@ -231,50 +237,61 @@ class EventBroadcaster:
             f" and found {len(new_channels)} new channels"
         )
 
-    def _broadcast(self, event: EventBase) -> int:
-        """Broadcasts an event to all registered event consumers.
+    def _get_comm_channel(self, descriptor: str) -> CommChannelBase:
+        """Helper method to build and cache a comm channel
 
-        :param event: an event to publish
-        :return: the number of events broadcasted to consumers"""
-        self._save_to_buffer(event)
+        :param descriptor: the descriptor to pass to the channel factory
+        :returns: the instantiated channel
+        :raises SmartSimError: if the channel fails to build"""
+        comm_channel = self._channel_cache[descriptor]
+        if comm_channel is not None:
+            return comm_channel
 
-        self._descriptors = set(self._backbone.notification_channels)
+        if self._channel_factory is None:
+            raise SmartSimError("No channel factory provided for consumers")
+
+        try:
+            channel = self._channel_factory(descriptor)
+            self._channel_cache[descriptor] = channel
+            return channel
+        except Exception as ex:
+            msg = f"Unable to construct channel with descriptor: {descriptor}"
+            logger.error(msg, exc_info=True)
+            raise SmartSimError(msg) from ex
+
+    def _broadcast(self) -> int:
+        """Broadcasts all buffered events to registered event consumers.
+
+        :return: the number of events broadcasted to consumers
+        :raises ValueError: if event serialization fails
+        :raises KeyError: if channel fails to attach using registered descriptors
+        :raises SmartSimError: if broadcasting fails"""
+
+        # allow descriptors to be empty since events are buffered
+        self._descriptors = set(x for x in self._backbone.notification_channels if x)
         if not self._descriptors:
             logger.warning("No event consumers are registered")
-            return 0
-
-        if not self._channel_factory:
-            logger.warning("No channel factory provided for consumers")
             return 0
 
         self._prune_unused_consumers()
         self._log_broadcast_start()
 
         num_sent: int = 0
-        next_event: t.Optional[EventBase] = self._event_buffer.popleft()
+        next_event: t.Optional[bytes] = self._event_buffer.popleft()
 
         # send each event to every consumer
         while next_event is not None:
             for descriptor in map(str, self._descriptors):
-                event_bytes = bytes(next_event)
-                comm_channel = self._channel_cache[descriptor]
-                try:
-                    if comm_channel is None:
-                        comm_channel = self._channel_factory(descriptor)
-                        self._channel_cache[descriptor] = comm_channel
+                comm_channel = self._get_comm_channel(descriptor)
 
-                    comm_channel.send(event_bytes)
+                try:
+                    comm_channel.send(next_event)
                     num_sent += 1
                     self._num_discards = 0
-                except KeyError:
-                    logger.error(
-                        f"Cannot broadcast to unknown channel: {descriptor}",
-                        exc_info=True,
-                    )
-                except Exception:
-                    logger.error(
-                        f"Broadcast failed for channel: {descriptor}", exc_info=True
-                    )
+                except Exception as ex:
+                    raise SmartSimError(
+                        f"Failed broadcast to channel: {descriptor}"
+                    ) from ex
 
             try:
                 next_event = self._event_buffer.popleft()
@@ -289,8 +306,18 @@ class EventBroadcaster:
         the supplied event to all registered broadcast consumers
 
         :param event: an event to publish
-        :returns: the number of events successfully published"""
-        return self._broadcast(event)
+        :returns: the number of events successfully published
+        :raises ValueError: if event serialization fails
+        :raises KeyError: if channel fails to attach using registered descriptors
+        :raises SmartSimError: if any unexpected error occurs during send"""
+        try:
+            self._save_to_buffer(event)
+
+            return self._broadcast()
+        except (KeyError, ValueError, SmartSimError):
+            raise
+        except Exception as ex:
+            raise SmartSimError("An unexpected failure occurred while sending") from ex
 
 
 class EventConsumer:

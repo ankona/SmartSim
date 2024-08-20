@@ -277,8 +277,8 @@ def test_eventpublisher_broadcast_buffer_discard(
     for i in range(buffer_size):
         actual_idx = expected_start_idx + i
 
-        buffer_value = publisher._event_buffer[i].descriptor
-        overall_value = all_events[actual_idx].descriptor
+        buffer_value = publisher._event_buffer[i]
+        overall_value = bytes(all_events[actual_idx])
 
         assert buffer_value == overall_value
 
@@ -297,22 +297,52 @@ def test_eventpublisher_broadcast_to_empty_consumer_list(test_dir: str) -> None:
 
     # prep our backbone with a consumer list
     backbone = BackboneFeatureStore(mock_storage)
-    backbone.notification_channels = (consumer_descriptor,)
+    backbone.notification_channels = []
 
     event = OnCreateConsumer(consumer_descriptor)
-    publisher = EventBroadcaster(backbone)
+    publisher = EventBroadcaster(
+        backbone, channel_factory=FileSystemCommChannel.from_descriptor
+    )
     num_receivers = publisher.send(event)
 
     registered_consumers = backbone[ReservedKeys.MLI_NOTIFY_CONSUMERS]
 
     # confirm that no consumers exist in backbone to send to
-    assert registered_consumers
+    assert not registered_consumers
     # confirm that the broadcast reports no events published
     assert num_receivers == 0
     # confirm that the broadcast buffered the event for a later send
     assert publisher.num_buffered == 1
     # confirm that no events were discarded from the buffer
     assert publisher.num_discarded == 0
+
+
+def test_eventpublisher_broadcast_without_channel_factory(test_dir: str) -> None:
+    """Verify that a broadcast operation reports an error if no channel
+    factory was supplied for constructing the consumer channels
+
+    :param test_dir: pytest fixture automatically generating unique working
+    directories for individual test outputs"""
+    storage_path = pathlib.Path(test_dir) / "features"
+    mock_storage = {}
+
+    # note: file-system descriptors are just paths
+    consumer_descriptor = storage_path / "test-consumer"
+
+    # prep our backbone with a consumer list
+    backbone = BackboneFeatureStore(mock_storage)
+    backbone.notification_channels = [consumer_descriptor]
+
+    event = OnCreateConsumer(consumer_descriptor)
+    publisher = EventBroadcaster(
+        backbone,
+        # channel_factory=FileSystemCommChannel.from_descriptor # <--- not supplied
+    )
+
+    with pytest.raises(SmartSimError) as ex:
+        publisher.send(event)
+
+    assert "factory" in ex.value.args[0]
 
 
 def test_eventpublisher_broadcast_empties_buffer(test_dir: str) -> None:
@@ -338,7 +368,7 @@ def test_eventpublisher_broadcast_empties_buffer(test_dir: str) -> None:
     num_buffered_events = 14
     for i in range(num_buffered_events):
         event = OnCreateConsumer(storage_path / f"test-consumer-{str(i)}")
-        publisher._event_buffer.append(event)
+        publisher._event_buffer.append(bytes(event))
 
     event0 = OnCreateConsumer(
         storage_path / f"test-consumer-{str(num_buffered_events + 1)}"
@@ -390,7 +420,7 @@ def test_eventpublisher_broadcast_returns_total_sent(
     # mock building up some buffered events
     for i in range(num_buffered):
         event = OnCreateConsumer(storage_path / f"test-consumer-{str(i)}")
-        publisher._event_buffer.append(event)
+        publisher._event_buffer.append(bytes(event))
 
     assert publisher.num_buffered == num_buffered
 
@@ -466,6 +496,113 @@ def test_eventpublisher_prune_unused_consumer(test_dir: str) -> None:
 
     # confirm we have only the two expected items in the channel cache
     assert len(publisher._channel_cache) == 2
+
+
+def test_eventpublisher_serialize_failure(
+    test_dir: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify that errors during message serialization are raised to the caller
+
+    :param test_dir: pytest fixture automatically generating unique working
+    directories for individual test outputs
+    :param monkeypatch: pytest fixture for modifying behavior of existing code
+    with mock implementations"""
+    storage_path = pathlib.Path(test_dir) / "features"
+    storage_path.mkdir(parents=True, exist_ok=True)
+
+    mock_storage = {}
+
+    # note: file-system descriptors are just paths
+    target_descriptor = str(storage_path / "test-consumer")
+
+    backbone = BackboneFeatureStore(mock_storage)
+    publisher = EventBroadcaster(
+        backbone, channel_factory=FileSystemCommChannel.from_descriptor
+    )
+
+    with monkeypatch.context() as patch:
+        event = OnCreateConsumer(target_descriptor)
+
+        # patch the __bytes__ implementation to cause pickling to fail during send
+        patch.setattr(event, "__bytes__", lambda x: b"abc")
+
+        backbone.notification_channels = (target_descriptor,)
+
+        # send a message into the channel
+        with pytest.raises(ValueError) as ex:
+            publisher.send(event)
+
+        assert "serialize" in ex.value.args[0]
+
+
+def test_eventpublisher_factory_failure(
+    test_dir: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify that errors during channel construction are raised to the caller
+
+    :param test_dir: pytest fixture automatically generating unique working
+    directories for individual test outputs
+    :param monkeypatch: pytest fixture for modifying behavior of existing code
+    with mock implementations"""
+    storage_path = pathlib.Path(test_dir) / "features"
+    storage_path.mkdir(parents=True, exist_ok=True)
+
+    mock_storage = {}
+
+    # note: file-system descriptors are just paths
+    target_descriptor = str(storage_path / "test-consumer")
+
+    def boom(descriptor: str) -> None:
+        raise Exception(f"you shall not pass! {descriptor}")
+
+    backbone = BackboneFeatureStore(mock_storage)
+    publisher = EventBroadcaster(backbone, channel_factory=boom)
+
+    with monkeypatch.context() as patch:
+        event = OnCreateConsumer(target_descriptor)
+
+        backbone.notification_channels = (target_descriptor,)
+
+        # send a message into the channel
+        with pytest.raises(SmartSimError) as ex:
+            publisher.send(event)
+
+        assert "construct" in ex.value.args[0]
+
+
+def test_eventpublisher_failure(test_dir: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify that errors during message send do not propagate directly to the caller
+
+    :param test_dir: pytest fixture automatically generating unique working
+    directories for individual test outputs
+    :param monkeypatch: pytest fixture for modifying behavior of existing code
+    with mock implementations"""
+    storage_path = pathlib.Path(test_dir) / "features"
+    storage_path.mkdir(parents=True, exist_ok=True)
+
+    mock_storage = {}
+
+    # note: file-system descriptors are just paths
+    target_descriptor = str(storage_path / "test-consumer")
+
+    backbone = BackboneFeatureStore(mock_storage)
+    publisher = EventBroadcaster(
+        backbone, channel_factory=FileSystemCommChannel.from_descriptor
+    )
+
+    with monkeypatch.context() as patch:
+        event = OnCreateConsumer(target_descriptor)
+
+        # patch the __bytes__ implementation to cause pickling to fail during send
+        patch.setattr(event, "__bytes__", lambda x: b"abc")
+
+        backbone.notification_channels = (target_descriptor,)
+
+        # send a message into the channel
+        with pytest.raises(ValueError) as ex:
+            publisher.send(event)
+
+        assert "serialize" in ex.value.args[0]
 
 
 def test_eventconsumer_receive(test_dir: str) -> None:
