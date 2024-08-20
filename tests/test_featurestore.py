@@ -26,6 +26,7 @@
 import os
 import os.path as osp
 import pathlib
+import random
 import shutil
 import typing as t
 
@@ -37,8 +38,10 @@ from smartsim._core.config.config import Config
 from smartsim._core.mli.infrastructure.storage.backbonefeaturestore import (
     BackboneFeatureStore,
     EventBroadcaster,
+    EventCategory,
     EventConsumer,
     OnCreateConsumer,
+    OnWriteFeatureStore,
 )
 from smartsim._core.mli.infrastructure.storage.dragonfeaturestore import (
     DragonFeatureStore,
@@ -631,7 +634,7 @@ def test_eventconsumer_receive(test_dir: str) -> None:
     assert len(all_received) == 1
 
     # verify we received the same event that was raised
-    assert all_received[0].type == event.type
+    assert all_received[0].category == event.category
     assert all_received[0].descriptor == event.descriptor
 
 
@@ -664,10 +667,6 @@ def test_eventconsumer_receive_multi(test_dir: str, num_sent: int) -> None:
     all_received: t.List[OnCreateConsumer] = consumer.receive()
     assert len(all_received) == num_sent
 
-    # # verify we received the same event that was raised
-    # assert all_received[0].type == event.type
-    # assert all_received[0].descriptor == event.descriptor
-
 
 def test_eventconsumer_receive_empty(test_dir: str) -> None:
     """Verify that a consumer receiving an empty message ignores the
@@ -696,3 +695,97 @@ def test_eventconsumer_receive_empty(test_dir: str) -> None:
 
     # the messages array should be empty
     assert not messages
+
+
+def test_eventconsumer_eventpublisher_integration(test_dir: str) -> None:
+    """Verify that the publisher and consumer integrate as expected when
+    multiple publishers and consumers are sending simultaneously.
+
+    :param test_dir: pytest fixture automatically generating unique working
+    directories for individual test outputs"""
+    storage_path = pathlib.Path(test_dir) / "features"
+    storage_path.mkdir(parents=True, exist_ok=True)
+
+    mock_storage = {}
+    backbone = BackboneFeatureStore(mock_storage)
+    mock_fs_descriptor = str(storage_path / f"mock-feature-store")
+
+    wmgr_consumer_descriptor = str(storage_path / f"test-wmgr")
+    capp_consumer_descriptor = str(storage_path / f"test-capp")
+    back_consumer_descriptor = str(storage_path / f"test-backend")
+
+    # create some consumers to receive messages
+    wmgr_consumer = EventConsumer(
+        FileSystemCommChannel.from_descriptor(wmgr_consumer_descriptor),
+        backbone,
+        filters=[EventCategory.FEATURE_STORE_WRITTEN],
+    )
+    capp_consumer = EventConsumer(
+        FileSystemCommChannel.from_descriptor(capp_consumer_descriptor),
+        backbone,
+    )
+    back_consumer = EventConsumer(
+        FileSystemCommChannel.from_descriptor(back_consumer_descriptor),
+        backbone,
+        filters=[EventCategory.CONSUMER_CREATED],
+    )
+
+    # create some broadcasters to publish messages
+    mock_worker_mgr = EventBroadcaster(
+        backbone,
+        channel_factory=FileSystemCommChannel.from_descriptor,
+    )
+    mock_client_app = EventBroadcaster(
+        backbone,
+        channel_factory=FileSystemCommChannel.from_descriptor,
+    )
+
+    # register all of the consumers even though the OnCreateConsumer really should
+    # trigger its registration. event processing is tested elsewhere.
+    backbone.notification_channels = [
+        wmgr_consumer_descriptor,
+        capp_consumer_descriptor,
+        back_consumer_descriptor,
+    ]
+
+    # simulate worker manager sending a notification to backend that it's alive
+    event_1 = OnCreateConsumer(wmgr_consumer_descriptor)
+    mock_worker_mgr.send(event_1)
+
+    # simulate the app updating a model a few times
+    event_2 = OnWriteFeatureStore(mock_fs_descriptor, "key-1")
+    event_3 = OnWriteFeatureStore(mock_fs_descriptor, "key-2")
+    event_4 = OnWriteFeatureStore(mock_fs_descriptor, "key-1")
+
+    mock_client_app.send(event_2)
+    mock_client_app.send(event_3)
+    mock_client_app.send(event_4)
+
+    # worker manager should only get updates about feature update
+    wmgr_messages = wmgr_consumer.receive()
+    assert len(wmgr_messages) == 3
+
+    # the backend should only receive messages about consumer creation
+    back_messages = back_consumer.receive()
+    assert len(back_messages) == 1
+
+    # hypothetical app has no filters and will get all events
+    app_messages = capp_consumer.receive()
+    assert len(app_messages) == 4
+
+
+def test_event_uid() -> None:
+    """Verify that all events include a unique identifier"""
+    uids: t.Set[str] = set()
+    num_iters = 1000
+
+    # generate a bunch of events and keep track all the IDs
+    for i in range(num_iters):
+        event_a = OnCreateConsumer(str(i))
+        event_b = OnWriteFeatureStore(str(i), "key")
+
+        uids.add(event_a.uid)
+        uids.add(event_b.uid)
+
+    # verify each event created a unique ID
+    assert len(uids) == 2 * num_iters

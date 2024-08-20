@@ -27,10 +27,8 @@
 import enum
 import pickle
 import typing as t
-from collections import defaultdict, deque
 import uuid
-
-from attr import dataclass
+from collections import defaultdict, deque
 
 # pylint: disable=import-error
 # isort: off
@@ -83,7 +81,7 @@ class BackboneFeatureStore(DragonFeatureStore):
         )
 
 
-class EventTypes(str, enum.Enum):
+class EventCategory(str, enum.Enum):
     """Predefined event types raised by SmartSim backend"""
 
     CONSUMER_CREATED: str = "consumer-created"
@@ -91,62 +89,83 @@ class EventTypes(str, enum.Enum):
     UNKNOWN: str = "unknown"
 
 
-@dataclass
-class EventBase:
-    type: EventTypes
-    """The event category for this event; may be used for addressing,
-    prioritization, or filtering of events by a event publisher/consumer"""
-    uid: t.Optional[str] = None
-    """A unique identifier for this event"""
+class EventBase(t.Protocol):
+    """Core API for an event"""
 
-    def __init__(self, type: EventTypes) -> None:
-        self.type = type
-        self.uid = str(uuid.uuid4())
+    @property
+    def category(self) -> EventCategory:
+        """The event category for this event; may be used for addressing,
+        prioritization, or filtering of events by a event publisher/consumer"""
 
-    def __str__(self) -> str:
-        """Convert the event to a string"""
-        return f"{type}"
+    @property
+    def uid(self) -> str:
+        """A unique identifier for this event"""
 
     def __bytes__(self) -> bytes:
         """Default conversion to bytes for an event required to publish
-        messages using byte-oriented communication channels"""
+        messages using byte-oriented communication channels
+
+        :returns: this entity encoded as bytes"""
+
+
+# @dataclass
+class OnCreateConsumer:
+    """Publish this event when a new event consumer registration is required"""
+
+    def __init__(self, descriptor: str) -> None:
+        self.descriptor = descriptor
+        """The descriptor of the comm channel exposed by the event consumer"""
+
+        self.category = EventCategory.CONSUMER_CREATED
+        """The event category for this event; may be used for addressing,
+        prioritization, or filtering of events by a event publisher/consumer"""
+
+        self.uid = str(uuid.uuid4())
+        """A unique identifier for this event"""
+
+    def __str__(self) -> str:
+        """Convert the event to a string
+
+        :returns: a string representation of this instance"""
+        return f"{self.uid}|{self.category}|{self.descriptor}"
+
+    def __bytes__(self) -> bytes:
+        """Default conversion to bytes for an event required to publish
+        messages using byte-oriented communication channels
+
+        :returns: this entity encoded as bytes"""
         return pickle.dumps(self)
 
 
-class OnCreateConsumer(EventBase):
-    """Publish this event when a new event consumer registration is required"""
-
-    descriptor: str
-    """The descriptor of the comm channel exposed by the event consumer"""
-
-    def __init__(self, descriptor: str) -> None:
-        """Initialize the event instance
-
-        :param type: the event category"""
-        super().__init__(EventTypes.CONSUMER_CREATED)
-        self.descriptor = descriptor
-
-    def __str__(self) -> str:
-        """Convert the event to a string"""
-        return f"{str(super())}|{self.descriptor}"
-
-
-class OnWriteFeatureStore(EventBase):
+class OnWriteFeatureStore:
     """Publish this event when a feature store key is written"""
 
-    descriptor: str
-    """The descriptor of the feature store where the write occurred"""
-    key: str
-    """The key for where the write occurred"""
-
     def __init__(self, descriptor: str, key: str) -> None:
-        super().__init__(EventTypes.FEATURE_STORE_WRITTEN)
         self.descriptor = descriptor
+        """The descriptor of the feature store where the write occurred"""
+
         self.key = key
+        """The key for where the write occurred"""
+
+        self.category = EventCategory.FEATURE_STORE_WRITTEN
+        """The event category for this event; may be used for addressing,
+        prioritization, or filtering of events by a event publisher/consumer"""
+
+        self.uid = str(uuid.uuid4())
+        """A unique identifier for this event"""
 
     def __str__(self) -> str:
-        """Convert the event to a string"""
-        return f"{str(super())}|{self.descriptor}|{self.key}"
+        """Convert the event to a string
+
+        :returns: a string representation of this instance"""
+        return f"{self.uid}|{self.category}|{self.descriptor}|{self.key}"
+
+    def __bytes__(self) -> bytes:
+        """Default conversion to bytes for an event required to publish
+        messages using byte-oriented communication channels
+
+        :returns: this entity encoded as bytes"""
+        return pickle.dumps(self)
 
 
 class EventPublisher(t.Protocol):
@@ -330,7 +349,7 @@ class EventConsumer:
         self,
         comm_channel: CommChannelBase,
         backbone: BackboneFeatureStore,
-        filters: t.Optional[t.List[EventTypes]] = None,
+        filters: t.Optional[t.List[EventCategory]] = None,
     ) -> None:
         """Initialize the EventConsumer instance
 
@@ -343,7 +362,7 @@ class EventConsumer:
         self._global_filters = filters or []
 
     def receive(
-        self, filters: t.Optional[t.List[EventTypes]] = None
+        self, filters: t.Optional[t.List[EventCategory]] = None
     ) -> t.List[EventBase]:
         """Receives available published event(s)
 
@@ -368,9 +387,12 @@ class EventConsumer:
             for message in msg_bytes_list:
                 msg = pickle.loads(message)
 
+                if not msg:
+                    continue
+
                 # ignore anything that doesn't match a filter (if one is
                 # supplied), otherwise return everything
-                if not filter_set or msg.type in filter_set:
+                if not filter_set or msg.category in filter_set:
                     messages.append(msg)
 
         return messages
