@@ -701,7 +701,6 @@ def test_eventconsumer_receive_empty(test_dir: str) -> None:
 
     backbone = BackboneFeatureStore(mock_storage)
     comm_channel = FileSystemCommChannel.from_descriptor(target_descriptor)
-    # event = OnCreateConsumer(target_descriptor)
 
     # simulate a sent event by writing directly to the input comm channel
     comm_channel.send(bytes(b""))
