@@ -33,7 +33,6 @@ from dataclasses import dataclass
 
 # pylint: disable=import-error
 # isort: off
-import dragon
 import dragon.data.ddict.ddict as dragon_ddict
 
 # isort: on
