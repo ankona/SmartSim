@@ -23,20 +23,13 @@
 # CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-import os
-import os.path as osp
 import pathlib
-import random
-import shutil
 import typing as t
 
 import pytest
 
 dragon = pytest.importorskip("dragon")
 
-from smartsim import Experiment
-from smartsim._core.config import CONFIG
-from smartsim._core.config.config import Config
 from smartsim._core.mli.infrastructure.storage.backbonefeaturestore import (
     BackboneFeatureStore,
     EventBroadcaster,
@@ -49,22 +42,16 @@ from smartsim._core.mli.infrastructure.storage.dragonfeaturestore import (
     DragonFeatureStore,
 )
 from smartsim._core.mli.infrastructure.storage.featurestore import ReservedKeys
-from smartsim._core.utils import serialize
-from smartsim.database import Orchestrator
-from smartsim.entity import Model
 from smartsim.error import SmartSimError
-from smartsim.error.errors import SSUnsupportedError
-from smartsim.settings import RunSettings
-from smartsim.status import SmartSimStatus
 from tests.mli.channel import FileSystemCommChannel
-from tests.mli.featurestore import FileSystemFeatureStore, MemoryFeatureStore
+from tests.mli.featurestore import MemoryFeatureStore
 
 if t.TYPE_CHECKING:
     import conftest
 
 
-# The tests in this file belong to the slow_tests group
-pytestmark = pytest.mark.slow_tests
+# The tests in this file belong to the group_a group
+pytestmark = pytest.mark.group_a
 
 
 def test_event_uid() -> None:

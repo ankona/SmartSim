@@ -51,8 +51,8 @@ if t.TYPE_CHECKING:
     import conftest
 
 
-# The tests in this file belong to the slow_tests group
-pytestmark = pytest.mark.slow_tests
+# The tests in this file must run in a dragon environment
+pytestmark = pytest.mark.dragon
 
 
 @pytest.fixture

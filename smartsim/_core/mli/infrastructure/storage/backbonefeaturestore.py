@@ -33,6 +33,7 @@ from dataclasses import dataclass
 
 # pylint: disable=import-error
 # isort: off
+import dragon
 import dragon.data.ddict.ddict as dragon_ddict
 
 # isort: on
@@ -353,7 +354,9 @@ class EventConsumer:
         :param comm_channel: communications channel to listen to for events
         :param backbone: the MLI backbone feature store
         :param filters: a list of event types to deliver. when empty, all
-        events will be delivered"""
+        events will be delivered
+        :param timeout: maximum time to wait for messages to arrive; may be overridden
+        on individual calls to `receive`"""
         self._comm_channel = comm_channel
         self._backbone = backbone
         self._global_filters = filters or []
