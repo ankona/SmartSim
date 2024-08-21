@@ -70,14 +70,14 @@ class DragonCommChannel(cch.CommChannelBase):
 
         :param timeout: maximum time to wait for messages to arrive
         :returns: the received message"""
-        timeout = timeout or self._recv_timeout
         with self._channel.recvh(timeout=timeout) as recvh:
             messages: t.List[bytes] = []
 
             # todo: consider that this could (under load) never exit. do we need
             # to configure a maximum number to pull at once?
             try:
-                while message_bytes := recvh.recv_bytes(timeout=self._recv_timeout):
+                timeout = timeout or self._recv_timeout
+                while message_bytes := recvh.recv_bytes(timeout=timeout):
                     messages.append(message_bytes)
             except dch.ChannelEmpty:
                 ...  # emptied the queue, swallow this ex
