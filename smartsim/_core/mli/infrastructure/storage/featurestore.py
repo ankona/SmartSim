@@ -36,10 +36,19 @@ logger = get_logger(__name__)
 
 
 class ReservedKeys(str, enum.Enum):
+    """Contains constants used to identify all featurestore keys that
+    may not be to used by users. Avoids overwriting system data"""
+
     MLI_NOTIFY_CONSUMERS = "_SMARTSIM_MLI_NOTIFY_CONSUMERS"
+    """Storage location for the list of registered consumers that will receive
+    events from an EventBroadcaster"""
 
     @classmethod
     def from_string(cls, value: str) -> t.Optional["ReservedKeys"]:
+        """Convert a string representation into an enumeration member
+
+        :param value: the string to convert
+        :returns: the enumeration member if the conversion succeeded, otherwise None"""
         try:
             return cls(value)
         except ValueError:
