@@ -49,7 +49,7 @@ class ReservedKeys(str, enum.Enum):
 
 
 @dataclass(frozen=True)
-class FeatureStoreKey(BaseModel):
+class FeatureStoreKey:
     """A key,descriptor pair enabling retrieval of an item from a feature store"""
 
     key: str
