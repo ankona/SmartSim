@@ -67,6 +67,23 @@ dragon = pytest.importorskip("dragon")
 pytestmark = pytest.mark.slow_tests
 
 
+def test_event_uid() -> None:
+    """Verify that all events include a unique identifier"""
+    uids: t.Set[str] = set()
+    num_iters = 1000
+
+    # generate a bunch of events and keep track all the IDs
+    for i in range(num_iters):
+        event_a = OnCreateConsumer(str(i))
+        event_b = OnWriteFeatureStore(str(i), "key")
+
+        uids.add(event_a.uid)
+        uids.add(event_b.uid)
+
+    # verify each event created a unique ID
+    assert len(uids) == 2 * num_iters
+
+
 def test_mli_reserved_keys_writes() -> None:
     """Verify that attempts to write to reserved keys are blocked from a
     standard DragonFeatureStore but enabled with the BackboneFeatureStore"""
@@ -640,7 +657,7 @@ def test_eventconsumer_receive(test_dir: str) -> None:
 
 @pytest.mark.parametrize("num_sent", [0, 1, 2, 4, 8, 16])
 def test_eventconsumer_receive_multi(test_dir: str, num_sent: int) -> None:
-    """Verify that a consumer retrieves mutliple message from the given channel
+    """Verify that a consumer retrieves multiple message from the given channel
 
     :param test_dir: pytest fixture automatically generating unique working
     directories for individual test outputs
@@ -710,22 +727,26 @@ def test_eventconsumer_eventpublisher_integration(test_dir: str) -> None:
     backbone = BackboneFeatureStore(mock_storage)
     mock_fs_descriptor = str(storage_path / f"mock-feature-store")
 
-    wmgr_consumer_descriptor = str(storage_path / f"test-wmgr")
-    capp_consumer_descriptor = str(storage_path / f"test-capp")
-    back_consumer_descriptor = str(storage_path / f"test-backend")
+    wmgr_channel = FileSystemCommChannel(storage_path / "test-wmgr")
+    capp_channel = FileSystemCommChannel(storage_path / "test-capp")
+    back_channel = FileSystemCommChannel(storage_path / "test-backend")
+
+    wmgr_consumer_descriptor = wmgr_channel.descriptor.decode("utf-8")
+    capp_consumer_descriptor = capp_channel.descriptor.decode("utf-8")
+    back_consumer_descriptor = back_channel.descriptor.decode("utf-8")
 
     # create some consumers to receive messages
     wmgr_consumer = EventConsumer(
-        FileSystemCommChannel.from_descriptor(wmgr_consumer_descriptor),
+        wmgr_channel,
         backbone,
         filters=[EventCategory.FEATURE_STORE_WRITTEN],
     )
     capp_consumer = EventConsumer(
-        FileSystemCommChannel.from_descriptor(capp_consumer_descriptor),
+        capp_channel,
         backbone,
     )
     back_consumer = EventConsumer(
-        FileSystemCommChannel.from_descriptor(back_consumer_descriptor),
+        back_channel,
         backbone,
         filters=[EventCategory.CONSUMER_CREATED],
     )
@@ -772,20 +793,3 @@ def test_eventconsumer_eventpublisher_integration(test_dir: str) -> None:
     # hypothetical app has no filters and will get all events
     app_messages = capp_consumer.receive()
     assert len(app_messages) == 4
-
-
-def test_event_uid() -> None:
-    """Verify that all events include a unique identifier"""
-    uids: t.Set[str] = set()
-    num_iters = 1000
-
-    # generate a bunch of events and keep track all the IDs
-    for i in range(num_iters):
-        event_a = OnCreateConsumer(str(i))
-        event_b = OnWriteFeatureStore(str(i), "key")
-
-        uids.add(event_a.uid)
-        uids.add(event_b.uid)
-
-    # verify each event created a unique ID
-    assert len(uids) == 2 * num_iters
