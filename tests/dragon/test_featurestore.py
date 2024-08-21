@@ -108,7 +108,7 @@ def test_eventconsumer_eventpublisher_integration(
         filters=[EventCategory.CONSUMER_CREATED],
     )
 
-    # # create some broadcasters to publish messages
+    # create some broadcasters to publish messages
     mock_worker_mgr = EventBroadcaster(
         backbone,
         channel_factory=DragonCommChannel.from_descriptor,
@@ -139,7 +139,7 @@ def test_eventconsumer_eventpublisher_integration(
     mock_client_app.send(event_3)
     mock_client_app.send(event_4)
 
-    # # worker manager should only get updates about feature update
+    # worker manager should only get updates about feature update
     wmgr_messages = wmgr_consumer.receive()
     assert len(wmgr_messages) == 3
 
