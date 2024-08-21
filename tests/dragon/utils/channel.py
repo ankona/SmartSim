@@ -70,9 +70,10 @@ class FileSystemCommChannel(CommChannelBase):
                 encoded_value = base64.b64encode(value).decode("utf-8")
                 fp.write(f"{encoded_value}\n")
 
-    def recv(self) -> t.List[bytes]:
+    def recv(self, _timeout: int = 0) -> t.List[bytes]:
         """Receieve a message through the underlying communication channel
 
+        :param _timeout: maximum time to wait for messages to arrive
         :returns: the received message
         :raises SmartSimError: if the descriptor points to a missing file"""
         with self._lock:

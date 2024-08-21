@@ -115,7 +115,6 @@ class EventBase:
         return f"{self.uid}|{self.category}"
 
 
-# @dataclass
 class OnCreateConsumer(EventBase):
     """Publish this event when a new event consumer registration is required"""
 
@@ -347,6 +346,7 @@ class EventConsumer:
         comm_channel: CommChannelBase,
         backbone: BackboneFeatureStore,
         filters: t.Optional[t.List[EventCategory]] = None,
+        timeout: int = 0,
     ) -> None:
         """Initialize the EventConsumer instance
 
@@ -357,14 +357,16 @@ class EventConsumer:
         self._comm_channel = comm_channel
         self._backbone = backbone
         self._global_filters = filters or []
+        self._global_timeout = timeout
 
     def receive(
-        self, filters: t.Optional[t.List[EventCategory]] = None
+        self, filters: t.Optional[t.List[EventCategory]] = None, timeout: int = 0
     ) -> t.List[EventBase]:
         """Receives available published event(s)
 
         :param filters: additional filters to add to the global filters configured
         on the EventConsumer instance
+        :param timeout: maximum time to wait for messages to arrive
         :returns: a list of events that pass any configured filters"""
         if filters is None:
             filters = []
@@ -372,8 +374,8 @@ class EventConsumer:
         filter_set = {*self._global_filters, *filters}
         messages: t.List[t.Any] = []
 
-        # todo: need a timeout on calls to `.recv`
-        # grab all messages sitting on the channel
+        # use the local timeout to override a global setting
+        timeout = timeout or self._global_timeout
         msg_bytes_list = self._comm_channel.recv()
 
         # remove any empty messages that will fail to decode

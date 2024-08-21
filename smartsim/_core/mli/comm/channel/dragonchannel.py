@@ -65,11 +65,13 @@ class DragonCommChannel(cch.CommChannelBase):
         with self._channel.sendh(timeout=None) as sendh:
             sendh.send_bytes(value)
 
-    def recv(self) -> t.List[bytes]:
+    def recv(self, timeout: int = 0) -> t.List[bytes]:
         """Receieve a message through the underlying communication channel
 
+        :param timeout: maximum time to wait for messages to arrive
         :returns: the received message"""
-        with self._channel.recvh(timeout=self._recv_timeout) as recvh:
+        timeout = timeout or self._recv_timeout
+        with self._channel.recvh(timeout=timeout) as recvh:
             messages: t.List[bytes] = []
 
             # todo: consider that this could (under load) never exit. do we need
