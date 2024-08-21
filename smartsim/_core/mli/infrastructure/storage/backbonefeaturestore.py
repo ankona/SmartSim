@@ -379,7 +379,7 @@ class EventConsumer:
 
         # use the local timeout to override a global setting
         timeout = timeout or self._global_timeout
-        msg_bytes_list = self._comm_channel.recv()
+        msg_bytes_list = self._comm_channel.recv(timeout)
 
         # remove any empty messages that will fail to decode
         msg_bytes_list = [msg for msg in msg_bytes_list if msg]
