@@ -47,7 +47,7 @@ class CommChannelBase(ABC):
 
     @abstractmethod
     def recv(self, timeout: int = 0) -> t.List[bytes]:
-        """Receieve a message through the underlying communication channel
+        """Receives message(s) through the underlying communication channel
 
         :param timeout: maximum time to wait for messages to arrive
         :returns: the received message"""
