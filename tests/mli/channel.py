@@ -45,7 +45,7 @@ class FileSystemCommChannel(CommChannelBase):
 
         :param key: a path to the root directory of the feature store"""
         self._lock = threading.RLock()
-        if not isinstance(key, bytes):
+        if isinstance(key, pathlib.Path):
             super().__init__(key.as_posix().encode("utf-8"))
             self._file_path = key
         else:
