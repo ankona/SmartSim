@@ -180,8 +180,8 @@ class EventBroadcaster:
     ) -> None:
         """Initialize the EventPublisher instance
 
-        :param backbone:
-        :param channel_factory:
+        :param backbone: the MLI backbone feature store
+        :param channel_factory: factory method to construct new channel instances
         :param buffer_size: Maximum number of events to store before discarding.
         Discards oldest events first.
         """
