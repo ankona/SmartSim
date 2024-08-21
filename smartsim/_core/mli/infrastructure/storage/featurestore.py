@@ -38,6 +38,15 @@ logger = get_logger(__name__)
 class ReservedKeys(str, enum.Enum):
     MLI_NOTIFY_CONSUMERS = "_SMARTSIM_MLI_NOTIFY_CONSUMERS"
 
+    @classmethod
+    def from_string(cls, value: str) -> t.Optional["ReservedKeys"]:
+        try:
+            return cls(value)
+        except ValueError:
+            ...  # key is not reserved, swallow
+
+        return None
+
 
 @dataclass(frozen=True)
 class FeatureStoreKey(BaseModel):
@@ -72,7 +81,8 @@ class FeatureStore(ABC):
 
         :param key: a key to compare to the reserved keys
         :raises SmartSimError: if the key is reserved"""
-        if key in ReservedKeys and not self._reserved_write_enabled:
+        reserved_key_match = ReservedKeys.from_string(key)
+        if reserved_key_match and not self._reserved_write_enabled:
             raise SmartSimError(
                 "Use of reserved key denied. "
                 "Unable to overwrite system configuration"
