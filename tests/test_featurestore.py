@@ -84,6 +84,19 @@ def test_event_uid() -> None:
     assert len(uids) == 2 * num_iters
 
 
+def test_mli_reserved_keys_conversion() -> None:
+    """Verify that conversion from a string to an enum member
+    works as expected"""
+
+    for reserved_key in ReservedKeys:
+        # iterate through all keys and verify `from_string` works
+        assert ReservedKeys.from_string(reserved_key.value)
+
+        # show that the value (actual key) not the enum member name
+        # will not be incorrectly identified as reserved
+        assert not ReservedKeys.from_string(str(reserved_key).split(".")[1])
+
+
 def test_mli_reserved_keys_writes() -> None:
     """Verify that attempts to write to reserved keys are blocked from a
     standard DragonFeatureStore but enabled with the BackboneFeatureStore"""

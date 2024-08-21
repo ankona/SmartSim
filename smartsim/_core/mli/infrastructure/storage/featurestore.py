@@ -43,7 +43,7 @@ class ReservedKeys(str, enum.Enum):
         try:
             return cls(value)
         except ValueError:
-            ...  # key is not reserved, swallow
+            ...  # value is not reserved, swallow
 
         return None
 
