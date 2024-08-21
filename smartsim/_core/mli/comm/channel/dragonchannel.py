@@ -43,10 +43,21 @@ except ImportError as exc:
 class DragonCommChannel(cch.CommChannelBase):
     """Passes messages by writing to a Dragon channel"""
 
-    def __init__(self, key: bytes) -> None:
-        """Initialize the DragonCommChannel instance"""
-        super().__init__(key)
-        self._channel: dch.Channel = dch.Channel.attach(key)
+    def __init__(self, channel: "dch.Channel", timeout: int = 0) -> None:
+        """Initialize the DragonCommChannel instance
+
+        :param key: a channel descriptor to attach"""
+        serialized_ch = channel.serialize()
+        safe_descriptor = base64.b64encode(serialized_ch).decode("utf-8")
+        super().__init__(safe_descriptor)
+        # self._channel: dch.Channel = dch.Channel.attach(key)
+        self._channel = channel
+        self._timeout = timeout
+
+    @property
+    def timeout(self) -> int:
+        """The timeout for receive requests (in seconds)"""
+        return self._timeout
 
     def send(self, value: bytes) -> None:
         """Send a message throuh the underlying communication channel
@@ -58,9 +69,31 @@ class DragonCommChannel(cch.CommChannelBase):
         """Receieve a message through the underlying communication channel
 
         :returns: the received message"""
-        with self._channel.recvh(timeout=None) as recvh:
-            message_bytes: bytes = recvh.recv_bytes(timeout=None)
-            return [message_bytes]
+        with self._channel.recvh(timeout=self._timeout) as recvh:
+            messages: t.List[bytes] = []
+
+            # todo: consider that this could (under load) never exit. do we need
+            # to configure a maximum number to pull at once?
+            try:
+                while message_bytes := recvh.recv_bytes(timeout=self._timeout):
+                    messages.append(message_bytes)
+            except dch.ChannelEmpty:
+                ...  # emptied the queue, swallow this ex
+
+            return messages
+
+    @property
+    def descriptor_string(self) -> str:
+        """Return the channel descriptor for the underlying dragon channel
+        as a string. Automatically performs base64 encoding to ensure the
+        string can be used in a call to `from_descriptor`"""
+        if isinstance(self._descriptor, str):
+            return self._descriptor
+
+        if isinstance(self._descriptor, bytes):
+            return base64.b64encode(self._descriptor).decode("utf-8")
+
+        raise ValueError(f"Unable to convert channel descriptor: {self._descriptor}")
 
     @classmethod
     def from_descriptor(
@@ -72,7 +105,12 @@ class DragonCommChannel(cch.CommChannelBase):
         :param descriptor: The descriptor that uniquely identifies the resource
         :returns: An attached DragonCommChannel"""
         try:
-            return DragonCommChannel(base64.b64decode(descriptor))
+            utf8_descriptor = descriptor.encode("utf-8")
+            actual_descriptor = base64.b64decode(utf8_descriptor)
+            channel = dch.Channel.attach(actual_descriptor)
+            return DragonCommChannel(channel)
         except:
-            logger.error(f"Failed to create dragon comm channel: {descriptor}")
+            logger.error(
+                f"Failed to create dragon comm channel: {descriptor}", exc_info=True
+            )
             raise
