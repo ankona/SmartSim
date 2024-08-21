@@ -78,8 +78,7 @@ def test_eventconsumer_eventpublisher_integration(
 
     # verify ability to write and read from ddict
     backbone["test_dir"] = test_dir
-
-    print(f"foo value is {backbone['test_dir']}")
+    assert backbone["test_dir"] == test_dir
 
     wmgr_channel_ = Channel.make_process_local()
     capp_channel_ = Channel.make_process_local()
