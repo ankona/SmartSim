@@ -32,6 +32,8 @@ import typing as t
 
 import pytest
 
+dragon = pytest.importorskip("dragon")
+
 from smartsim import Experiment
 from smartsim._core.config import CONFIG
 from smartsim._core.config.config import Config
@@ -59,8 +61,6 @@ from tests.mli.featurestore import FileSystemFeatureStore, MemoryFeatureStore
 
 if t.TYPE_CHECKING:
     import conftest
-
-dragon = pytest.importorskip("dragon")
 
 
 # The tests in this file belong to the slow_tests group

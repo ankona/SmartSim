@@ -29,6 +29,8 @@ import typing as t
 
 import pytest
 
+dragon = pytest.importorskip("dragon")
+
 from smartsim._core.mli.comm.channel.dragonchannel import DragonCommChannel
 from smartsim._core.mli.infrastructure.storage.backbonefeaturestore import (
     BackboneFeatureStore,
@@ -39,8 +41,6 @@ from smartsim._core.mli.infrastructure.storage.backbonefeaturestore import (
     OnWriteFeatureStore,
 )
 from smartsim._core.mli.infrastructure.storage.dragonfeaturestore import dragon_ddict
-
-dragon = pytest.importorskip("dragon")
 
 # isort: off
 from dragon.channels import Channel
