@@ -43,21 +43,21 @@ except ImportError as exc:
 class DragonCommChannel(cch.CommChannelBase):
     """Passes messages by writing to a Dragon channel"""
 
-    def __init__(self, channel: "dch.Channel", timeout: int = 0) -> None:
+    def __init__(self, channel: "dch.Channel", recv_timeout: int = 0) -> None:
         """Initialize the DragonCommChannel instance
 
-        :param key: a channel descriptor to attach"""
+        :param channel: a channel to use for communications
+        :param recv_timeout: a default timeout to apply to receive calls"""
         serialized_ch = channel.serialize()
         safe_descriptor = base64.b64encode(serialized_ch).decode("utf-8")
         super().__init__(safe_descriptor)
-        # self._channel: dch.Channel = dch.Channel.attach(key)
         self._channel = channel
-        self._timeout = timeout
+        self._recv_timeout = recv_timeout
 
     @property
-    def timeout(self) -> int:
+    def recv_timeout(self) -> int:
         """The timeout for receive requests (in seconds)"""
-        return self._timeout
+        return self._recv_timeout
 
     def send(self, value: bytes) -> None:
         """Send a message throuh the underlying communication channel
@@ -69,13 +69,13 @@ class DragonCommChannel(cch.CommChannelBase):
         """Receieve a message through the underlying communication channel
 
         :returns: the received message"""
-        with self._channel.recvh(timeout=self._timeout) as recvh:
+        with self._channel.recvh(timeout=self._recv_timeout) as recvh:
             messages: t.List[bytes] = []
 
             # todo: consider that this could (under load) never exit. do we need
             # to configure a maximum number to pull at once?
             try:
-                while message_bytes := recvh.recv_bytes(timeout=self._timeout):
+                while message_bytes := recvh.recv_bytes(timeout=self._recv_timeout):
                     messages.append(message_bytes)
             except dch.ChannelEmpty:
                 ...  # emptied the queue, swallow this ex
@@ -102,7 +102,8 @@ class DragonCommChannel(cch.CommChannelBase):
     ) -> "DragonCommChannel":
         """A factory method that creates an instance from a descriptor string
 
-        :param descriptor: The descriptor that uniquely identifies the resource
+        :param descriptor: The descriptor that uniquely identifies the resource. Output
+        from `descriptor_string` is correctly encoded.
         :returns: An attached DragonCommChannel"""
         try:
             utf8_descriptor = descriptor.encode("utf-8")
