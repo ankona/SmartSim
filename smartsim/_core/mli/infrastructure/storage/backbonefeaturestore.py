@@ -219,7 +219,10 @@ class EventBroadcaster:
         to the buffer using a first-in, first-discarded strategy.
 
         :param event: The event to serialize and buffer"""
-        if len(self._event_buffer) >= self._event_buffer.maxlen:
+        if (
+            self._event_buffer.maxlen
+            and len(self._event_buffer) >= self._event_buffer.maxlen
+        ):
             # deque automatically discards oldest records
             self._num_discards += 1
 
