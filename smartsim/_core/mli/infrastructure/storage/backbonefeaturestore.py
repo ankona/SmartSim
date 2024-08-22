@@ -176,7 +176,7 @@ class EventBroadcaster:
         self,
         backbone: BackboneFeatureStore,
         channel_factory: t.Optional[t.Callable[[str], CommChannelBase]] = None,
-        buffer_size: int = 100,
+        buffer_size: int = 1000,
     ) -> None:
         """Initialize the EventPublisher instance
 
@@ -200,8 +200,6 @@ class EventBroadcaster:
         self._num_discards: int = 0
         """Number of messages discarded from the buffer since the last successful
         broadcast"""
-        self._buffer_size: int = buffer_size
-        """Maximum size of the event buffer"""
         self._descriptors: t.Set[str]
         """Stores the most recent list of broadcast consumers. Updated automatically
         on each broadcast"""
@@ -221,8 +219,8 @@ class EventBroadcaster:
         to the buffer using a first-in, first-discarded strategy.
 
         :param event: The event to serialize and buffer"""
-        if len(self._event_buffer) == self._buffer_size:
-            self._event_buffer.popleft()
+        if len(self._event_buffer) >= self._event_buffer.maxlen:
+            # deque automatically discards oldest records
             self._num_discards += 1
 
         try:
