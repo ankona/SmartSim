@@ -176,14 +176,11 @@ class EventBroadcaster:
         self,
         backbone: BackboneFeatureStore,
         channel_factory: t.Optional[t.Callable[[str], CommChannelBase]] = None,
-        buffer_size: int = 1000,
     ) -> None:
         """Initialize the EventPublisher instance
 
         :param backbone: the MLI backbone feature store
         :param channel_factory: factory method to construct new channel instances
-        :param buffer_size: Maximum number of events to store before discarding.
-        Discards oldest events first.
         """
         self._backbone = backbone
         """The backbone feature store used to retrieve consumer descriptors"""
@@ -194,12 +191,8 @@ class EventBroadcaster:
         )
         """A mapping of instantiated channels that can be re-used. Automatically 
         calls the channel factory if a descriptor is not already in the collection"""
-        self._event_buffer: t.Deque[bytes] = deque(maxlen=buffer_size)
-        """A buffer for storing events when a consumer list is not found. Buffer size
-        can be fixed by passing the `buffer_size` parameter."""
-        self._num_discards: int = 0
-        """Number of messages discarded from the buffer since the last successful
-        broadcast"""
+        self._event_buffer: t.Deque[bytes] = deque()
+        """A buffer for storing events when a consumer list is not found."""
         self._descriptors: t.Set[str]
         """Stores the most recent list of broadcast consumers. Updated automatically
         on each broadcast"""
@@ -209,22 +202,11 @@ class EventBroadcaster:
         """Return the number of events currently buffered to send"""
         return len(self._event_buffer)
 
-    @property
-    def num_discarded(self) -> int:
-        """Return the number of events discarded from the buffer since the last send"""
-        return self._num_discards
-
     def _save_to_buffer(self, event: EventBase) -> None:
-        """Places a serialized event in the buffer until full. Continues adding events
-        to the buffer using a first-in, first-discarded strategy.
+        """Places a serialized event in the buffer to be sent once a consumer
+        list is available.
 
         :param event: The event to serialize and buffer"""
-        if (
-            self._event_buffer.maxlen
-            and len(self._event_buffer) >= self._event_buffer.maxlen
-        ):
-            # deque automatically discards oldest records
-            self._num_discards += 1
 
         try:
             event_bytes = bytes(event)
@@ -306,7 +288,6 @@ class EventBroadcaster:
                 try:
                     comm_channel.send(next_event)
                     num_sent += 1
-                    self._num_discards = 0
                 except Exception as ex:
                     raise SmartSimError(
                         f"Failed broadcast to channel: {descriptor}"
@@ -398,3 +379,4 @@ class EventConsumer:
                     messages.append(msg)
 
         return messages
+

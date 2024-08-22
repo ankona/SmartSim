@@ -177,9 +177,8 @@ def test_eventpublisher_broadcast_no_factory(test_dir: str) -> None:
     backbone = BackboneFeatureStore(mock_storage)
 
     event = OnCreateConsumer(consumer_descriptor)
-    buffer_size = 20
 
-    publisher = EventBroadcaster(backbone, buffer_size=buffer_size)
+    publisher = EventBroadcaster(backbone)
     num_receivers = 0
 
     # publishing this event without any known consumers registered should succeed
@@ -197,110 +196,6 @@ def test_eventpublisher_broadcast_no_factory(test_dir: str) -> None:
     assert num_receivers == 0
     # confirm that the broadcast buffered the event for a later send
     assert publisher.num_buffered == 1
-    # confirm that no events were discarded from the buffer
-    assert publisher.num_discarded == 0
-
-
-def test_eventpublisher_broadcast_buffer_not_exceeded(test_dir: str) -> None:
-    """Verify that a broadcast continues to grow the buffer size until
-    the max buffer size is reached
-
-    :param test_dir: pytest fixture automatically generating unique working
-    directories for individual test outputs"""
-    storage_path = pathlib.Path(test_dir) / "features"
-    mock_storage = {}
-    consumer_descriptor = storage_path / "test-consumer"
-
-    # NOTE: we're not putting any consumers into the backbone here!
-    backbone = BackboneFeatureStore(mock_storage)
-
-    event = OnCreateConsumer(consumer_descriptor)
-    buffer_size = 20
-
-    publisher = EventBroadcaster(backbone, buffer_size=buffer_size)
-    num_receivers = 0
-
-    # publishing this event without any known consumers registered should succeed
-    # but report that it didn't have anybody to send the event to
-    num_to_send = buffer_size
-    for i in range(num_to_send):
-        consumer_descriptor = storage_path / f"test-consumer-{i}"
-        event = OnCreateConsumer(consumer_descriptor)
-
-        num_receivers += publisher.send(event)
-
-    # confirm no changes to the backbone occur when fetching the empty consumer key
-    key_in_features_store = ReservedKeys.MLI_NOTIFY_CONSUMERS in backbone
-    assert not key_in_features_store
-
-    # confirm that the broadcast reports no events published
-    assert num_receivers == 0
-    # confirm that the broadcast buffered the event for a later send and
-    # wasn't constrained by the buffer size
-    assert publisher.num_buffered == num_to_send
-    # confirm that no events were discarded from the buffer
-    assert publisher.num_discarded == 0
-
-
-@pytest.mark.parametrize(
-    "buffer_size,num_to_send",
-    [
-        pytest.param(20, 20, id="full buffer, no discards"),
-        pytest.param(20, 21, id="full buffer, 1 discard"),
-        pytest.param(20, 24, id="full buffer, multiple discards"),
-        pytest.param(20, 40, id="discard entire buffer 1x"),
-        pytest.param(20, 70, id="discard buffer 3x"),
-    ],
-)
-def test_eventpublisher_broadcast_buffer_discard(
-    test_dir: str,
-    buffer_size: int,
-    num_to_send: int,
-) -> None:
-    """Verify that a broadcast operation discards events once the configured
-    buffer size is reached, then discards the oldest messages first
-
-    :param test_dir: pytest fixture automatically generating unique working
-    directories for individual test outputs
-    :param buffer_size: how large the buffer should be in this run
-    :param num_to_send: how many events to broadcast
-    """
-    storage_path = pathlib.Path(test_dir) / "features"
-    mock_storage = {}
-    consumer_descriptor = storage_path / "test-consumer"
-
-    # NOTE: we're not putting any consumers into the backbone here!
-    # this should causes rolling buffering we can verify
-    backbone = BackboneFeatureStore(mock_storage)
-    event = OnCreateConsumer(consumer_descriptor)
-    publisher = EventBroadcaster(backbone, buffer_size=buffer_size)
-    num_receivers = 0
-
-    all_events = []
-
-    # raise more events than the buffer can hold
-    for i in range(num_to_send):
-        consumer_descriptor = storage_path / str(i)
-        event = OnCreateConsumer(consumer_descriptor)
-        all_events.append(event)
-
-        num_receivers += publisher.send(event)
-
-    # confirm that the buffer does not grow beyond configured maximum
-    assert publisher.num_buffered == buffer_size
-
-    # confirm that the number discarded grows unbounded
-    assert publisher.num_discarded == num_to_send - buffer_size
-
-    # confirm that the buffer is populated with the last `buffer_size` events
-    expected_start_idx = num_to_send - buffer_size
-    for i in range(buffer_size):
-        actual_idx = expected_start_idx + i
-
-        buffer_value = publisher._event_buffer[i]
-        overall_value = bytes(all_events[actual_idx])
-
-        assert buffer_value == overall_value
 
 
 def test_eventpublisher_broadcast_to_empty_consumer_list(test_dir: str) -> None:
@@ -333,8 +228,6 @@ def test_eventpublisher_broadcast_to_empty_consumer_list(test_dir: str) -> None:
     assert num_receivers == 0
     # confirm that the broadcast buffered the event for a later send
     assert publisher.num_buffered == 1
-    # confirm that no events were discarded from the buffer
-    assert publisher.num_discarded == 0
 
 
 def test_eventpublisher_broadcast_without_channel_factory(test_dir: str) -> None:
@@ -397,7 +290,6 @@ def test_eventpublisher_broadcast_empties_buffer(test_dir: str) -> None:
     num_receivers = publisher.send(event0)
     # 1 receiver x 15 total events == 15 events
     assert num_receivers == num_buffered_events + 1
-    assert publisher.num_discarded == 0
 
 
 @pytest.mark.parametrize(
@@ -451,7 +343,6 @@ def test_eventpublisher_broadcast_returns_total_sent(
     num_receivers = publisher.send(event0)
 
     assert num_receivers == expected_num_sent
-    assert publisher.num_discarded == 0
 
 
 def test_eventpublisher_prune_unused_consumer(test_dir: str) -> None:
