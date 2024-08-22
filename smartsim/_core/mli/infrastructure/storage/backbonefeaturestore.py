@@ -379,4 +379,3 @@ class EventConsumer:
                     messages.append(msg)
 
         return messages
-
