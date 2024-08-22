@@ -591,7 +591,8 @@ def test_eventpublisher_factory_failure(
 
 
 def test_eventpublisher_failure(test_dir: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Verify that errors during message send do not propagate directly to the caller
+    """Verify that unexpected errors during message send are caught and wrapped in a
+    SmartSimError so they are not propagated directly to the caller
 
     :param test_dir: pytest fixture automatically generating unique working
     directories for individual test outputs
@@ -610,19 +611,24 @@ def test_eventpublisher_failure(test_dir: str, monkeypatch: pytest.MonkeyPatch) 
         backbone, channel_factory=FileSystemCommChannel.from_descriptor
     )
 
+    def boom(self) -> None:
+        raise Exception("That was unexpected...")
+
     with monkeypatch.context() as patch:
         event = OnCreateConsumer(target_descriptor)
 
-        # patch the __bytes__ implementation to cause pickling to fail during send
-        patch.setattr(event, "__bytes__", lambda x: b"abc")
+        # patch the _broadcast implementation to cause send to fail after
+        # after the event has been pickled
+        patch.setattr(publisher, "_broadcast", boom)
 
         backbone.notification_channels = (target_descriptor,)
 
-        # send a message into the channel
-        with pytest.raises(ValueError) as ex:
+        # Here, we see the exception raised by broadcast that isn't expected
+        # is not allowed directly out, and instead is wrapped in SmartSimError
+        with pytest.raises(SmartSimError) as ex:
             publisher.send(event)
 
-        assert "serialize" in ex.value.args[0]
+        assert "unexpected" in ex.value.args[0]
 
 
 def test_eventconsumer_receive(test_dir: str) -> None:
