@@ -24,23 +24,22 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import typing as t
+
 import pytest
 
-from smartsim._core.mli.message_handler import MessageHandler
+dragon = pytest.importorskip("dragon")
 
-# The tests in this file belong to the group_a group
-pytestmark = pytest.mark.group_a
+# isort: off
+from dragon.channels import Channel
 
-handler = MessageHandler()
-
-
-def test_build_tensor_key_successful():
-    fsd = "mock-feature-store-descriptor"
-    tensor_key = handler.build_tensor_key("tensor_key", fsd)
-    assert tensor_key.key == "tensor_key"
+from ex.high_throughput_inference.mock_app import ProtoClient
 
 
-def test_build_tensor_key_unsuccessful():
-    with pytest.raises(ValueError):
-        fsd = "mock-feature-store-descriptor"
-        tensor_key = handler.build_tensor_key(100, fsd)
+# The tests in this file belong to the dragon group
+pytestmark = pytest.mark.dragon
+
+
+def test_protoclient():
+    client = ProtoClient(False)
+    assert client

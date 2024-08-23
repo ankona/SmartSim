@@ -72,7 +72,7 @@ def test_eventconsumer_eventpublisher_integration(
     directories for individual test outputs"""
 
     mock_storage = storage_for_dragon_fs
-    backbone = BackboneFeatureStore(mock_storage)
+    backbone = BackboneFeatureStore(mock_storage, allow_write=True)
     mock_fs_descriptor = backbone.descriptor
 
     # verify ability to write and read from ddict
@@ -126,7 +126,7 @@ def test_eventconsumer_eventpublisher_integration(
     ]
 
     # simulate worker manager sending a notification to backend that it's alive
-    event_1 = OnCreateConsumer(wmgr_consumer_descriptor)
+    event_1 = OnCreateConsumer(wmgr_consumer_descriptor, [])
     mock_worker_mgr.send(event_1)
 
     # simulate the app updating a model a few times

@@ -99,15 +99,19 @@ def setup_worker_manager_model_bytes(
         EnvironmentConfigLoader(
             featurestore_factory=DragonFeatureStore.from_descriptor,
             callback_factory=FileSystemCommChannel.from_descriptor,
-            queue_factory=DragonFLIChannel.from_descriptor,
+            queue_factory=DragonFLIChannel.from_sender_supplied_descriptor,
         ),
         integrated_worker,
         as_service=False,
         cooldown=3,
     )
 
-    tensor_key = MessageHandler.build_tensor_key("key", app_feature_store.descriptor)
-    output_key = MessageHandler.build_tensor_key("key", app_feature_store.descriptor)
+    tensor_key = MessageHandler.build_feature_store_key(
+        "key", app_feature_store.descriptor
+    )
+    output_key = MessageHandler.build_feature_store_key(
+        "key", app_feature_store.descriptor
+    )
     model = MessageHandler.build_model(b"model", "model name", "v 0.0.1")
     request = MessageHandler.build_request(
         test_dir, model, [tensor_key], [output_key], [], None
@@ -139,16 +143,20 @@ def setup_worker_manager_model_key(
         EnvironmentConfigLoader(
             featurestore_factory=DragonFeatureStore.from_descriptor,
             callback_factory=FileSystemCommChannel.from_descriptor,
-            queue_factory=DragonFLIChannel.from_descriptor,
+            queue_factory=DragonFLIChannel.from_sender_supplied_descriptor,
         ),
         integrated_worker,
         as_service=False,
         cooldown=3,
     )
 
-    tensor_key = MessageHandler.build_tensor_key("key", app_feature_store.descriptor)
-    output_key = MessageHandler.build_tensor_key("key", app_feature_store.descriptor)
-    model_key = MessageHandler.build_model_key(
+    tensor_key = MessageHandler.build_feature_store_key(
+        "key", app_feature_store.descriptor
+    )
+    output_key = MessageHandler.build_feature_store_key(
+        "key", app_feature_store.descriptor
+    )
+    model_key = MessageHandler.build_feature_store_key(
         "model key", app_feature_store.descriptor
     )
     request = MessageHandler.build_request(

@@ -42,17 +42,20 @@ logger = get_logger(__name__)
 class DragonFLIChannel(cch.CommChannelBase):
     """Passes messages by writing to a Dragon FLI Channel"""
 
-    def __init__(self, fli_desc: bytes, sender_supplied: bool = True) -> None:
+    def __init__(
+        self, fli_: fli.FLInterface, supply_stream_channel: bool = True
+    ) -> None:
         """Initialize the DragonFLIChannel instance
 
-        :param fli_desc: the descriptor of the FLI channel to attach
+        :param fli_: the FLInterface to use as the underlying communcation channel
         :param sender_supplied: flag indicating if the FLI uses sender-supplied streams
         """
-        super().__init__(fli_desc)
-        # todo: do we need memory pool information to construct the channel correctly?
-        self._fli: "fli" = fli.FLInterface.attach(fli_desc)
-        self._channel: t.Optional["dch"] = (
-            dch.Channel.make_process_local() if sender_supplied else None
+        descriptor = base64.b64encode(fli_.serialize()).decode("utf-8")
+        super().__init__(descriptor)
+
+        self._fli = fli_
+        self._channel: t.Optional["dch.Channel"] = (
+            dch.Channel.make_process_local() if supply_stream_channel else None
         )
 
     def send(self, value: bytes) -> None:
@@ -62,7 +65,7 @@ class DragonFLIChannel(cch.CommChannelBase):
         with self._fli.sendh(timeout=None, stream_channel=self._channel) as sendh:
             sendh.send_bytes(value)
 
-    def recv(self, timeout: int = 0) -> t.List[bytes]:
+    def recv(self, timeout: int = 1) -> t.List[bytes]:
         """Receives message(s) through the underlying communication channel
 
         :param timeout: maximum time to wait for messages to arrive
@@ -79,18 +82,45 @@ class DragonFLIChannel(cch.CommChannelBase):
         return messages
 
     @classmethod
+    def _string_descriptor_to_fli(cls, descriptor: str) -> "fli.FLInterface":
+        """Helper method to convert a string-safe, encoded descriptor back
+        into its original byte format"""
+        descriptor_ = base64.b64decode(descriptor.encode("utf-8"))
+        return fli.FLInterface.attach(descriptor_)
+
+    @classmethod
+    def from_sender_supplied_descriptor(
+        cls,
+        descriptor: str,
+    ) -> "DragonFLIChannel":
+        """A factory method that creates an instance from a descriptor string
+
+        :param descriptor: the descriptor of the main FLI channel to attach
+        :returns: An attached DragonFLIChannel"""
+        try:
+            return DragonFLIChannel(
+                fli_=cls._string_descriptor_to_fli(descriptor),
+                supply_stream_channel=True,
+            )
+        except:
+            logger.error(
+                f"Error while creating sender supplied DragonFLIChannel: {descriptor}"
+            )
+            raise
+
+    @classmethod
     def from_descriptor(
         cls,
         descriptor: str,
     ) -> "DragonFLIChannel":
         """A factory method that creates an instance from a descriptor string
 
-        :param descriptor: The descriptor that uniquely identifies the resource
+        :param descriptor: the descriptor of the main FLI channel to attach
         :returns: An attached DragonFLIChannel"""
         try:
             return DragonFLIChannel(
-                fli_desc=base64.b64decode(descriptor),
-                sender_supplied=True,
+                fli_=cls._string_descriptor_to_fli(descriptor),
+                supply_stream_channel=False,
             )
         except:
             logger.error(f"Error while creating DragonFLIChannel: {descriptor}")

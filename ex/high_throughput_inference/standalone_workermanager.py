@@ -41,6 +41,9 @@ import os
 
 from smartsim._core.mli.comm.channel.dragonchannel import DragonCommChannel
 from smartsim._core.mli.comm.channel.dragonfli import DragonFLIChannel
+from smartsim._core.mli.infrastructure.storage.backbonefeaturestore import (
+    BackboneFeatureStore,
+)
 from smartsim._core.mli.infrastructure.storage.dragonfeaturestore import (
     DragonFeatureStore,
 )
@@ -70,22 +73,23 @@ if __name__ == "__main__":
     args = parser.parse_args()
     connect_to_infrastructure()
     ddict_str = os.environ["_SMARTSIM_INFRA_BACKBONE"]
-    ddict = DDict.attach(ddict_str)
+
+    backbone = BackboneFeatureStore.from_writable_descriptor(ddict_str)
 
     to_worker_channel = Channel.make_process_local()
     to_worker_fli = fli.FLInterface(main_ch=to_worker_channel, manager_ch=None)
-    to_worker_fli_serialized = to_worker_fli.serialize()
-    ddict["to_worker_fli"] = to_worker_fli_serialized
+    to_worker_fli_comm_channel = DragonFLIChannel(to_worker_fli, True)
+
+    backbone.worker_queue = to_worker_fli_comm_channel.descriptor
 
     worker_type_name = base64.b64decode(args.worker_class.encode("ascii"))
     torch_worker = cloudpickle.loads(worker_type_name)()
 
-    descriptor = base64.b64encode(to_worker_fli_serialized).decode("utf-8")
-    os.environ["_SMARTSIM_REQUEST_QUEUE"] = descriptor
+    os.environ["_SMARTSIM_REQUEST_QUEUE"] = to_worker_fli_comm_channel.descriptor
 
     config_loader = EnvironmentConfigLoader(
         featurestore_factory=DragonFeatureStore.from_descriptor,
-        callback_factory=DragonCommChannel,
+        callback_factory=DragonCommChannel.from_descriptor,
         queue_factory=DragonFLIChannel.from_descriptor,
     )
 

@@ -59,6 +59,11 @@ class DragonCommChannel(cch.CommChannelBase):
         """The timeout for receive requests (in seconds)"""
         return self._recv_timeout
 
+    @property
+    def channel(self) -> "dch.Channel":
+        """The underlying communication channel"""
+        return self._channel
+
     def send(self, value: bytes) -> None:
         """Send a message throuh the underlying communication channel
         :param value: The value to send"""
@@ -116,4 +121,18 @@ class DragonCommChannel(cch.CommChannelBase):
             logger.error(
                 f"Failed to create dragon comm channel: {descriptor}", exc_info=True
             )
+            raise
+
+    @classmethod
+    def from_local(
+        cls,
+    ) -> "DragonCommChannel":
+        """A factory method that creates a local channel instance
+
+        :returns: An attached DragonCommChannel"""
+        try:
+            channel = dch.Channel.make_process_local()
+            return DragonCommChannel(channel)
+        except:
+            logger.error(f"Failed to create local dragon comm channel", exc_info=True)
             raise
