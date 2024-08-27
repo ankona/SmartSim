@@ -103,7 +103,8 @@ class DragonFeatureStore(FeatureStore):
         :returns: An attached DragonFeatureStore
         :raises SmartSimError: if attachment to DragonFeatureStore fails"""
         try:
-            return DragonFeatureStore(dragon_ddict.DDict.attach(descriptor))
+            logger.debug(f"Attaching to FeatureStore with descriptor: {descriptor}")
+            return cls(dragon_ddict.DDict.attach(descriptor))
         except Exception as ex:
             logger.error(f"Error creating dragon feature store: {descriptor}")
             raise SmartSimError(

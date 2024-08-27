@@ -49,6 +49,7 @@ from smartsim._core.mli.infrastructure.storage.dragonfeaturestore import (
 )
 from smartsim._core.mli.infrastructure.control.workermanager import WorkerManager
 from smartsim._core.mli.infrastructure.environmentloader import EnvironmentConfigLoader
+from smartsim._core.mli.infrastructure.storage.featurestore import ReservedKeys
 
 
 if __name__ == "__main__":
@@ -74,7 +75,8 @@ if __name__ == "__main__":
     connect_to_infrastructure()
     ddict_str = os.environ["_SMARTSIM_INFRA_BACKBONE"]
 
-    backbone = BackboneFeatureStore.from_writable_descriptor(ddict_str)
+    # backbone = BackboneFeatureStore.from_writable_descriptor(ddict_str)
+    backbone = BackboneFeatureStore.from_descriptor(ddict_str)
 
     to_worker_channel = Channel.make_process_local()
     to_worker_fli = fli.FLInterface(main_ch=to_worker_channel, manager_ch=None)
@@ -85,6 +87,7 @@ if __name__ == "__main__":
     worker_type_name = base64.b64decode(args.worker_class.encode("ascii"))
     torch_worker = cloudpickle.loads(worker_type_name)()
 
+    ReservedKeys()
     os.environ["_SMARTSIM_REQUEST_QUEUE"] = to_worker_fli_comm_channel.descriptor
 
     config_loader = EnvironmentConfigLoader(

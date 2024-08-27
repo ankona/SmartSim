@@ -41,10 +41,13 @@ import numpy
 import os
 import time
 import torch
+import typing as t
 import numbers
 
 from collections import OrderedDict
 from smartsim._core.mli.comm.channel.dragonchannel import DragonCommChannel
+from smartsim._core.mli.comm.channel.dragonfli import DragonFLIChannel
+from smartsim._core.mli.infrastructure.storage.featurestore import ReservedKeys
 from smartsim._core.mli.message_handler import MessageHandler
 from smartsim._core.mli.infrastructure.storage.backbonefeaturestore import (
     BackboneFeatureStore,
@@ -52,18 +55,21 @@ from smartsim._core.mli.infrastructure.storage.backbonefeaturestore import (
     EventPublisher,
     OnWriteFeatureStore,
 )
+from smartsim.error.errors import SmartSimError
 from smartsim.log import get_logger, log_to_file
 
 logger = get_logger("App", "DEBUG")
 
-log_to_file("_smartsim.log", "debug", logger)
+log_to_file("_smartsim.log", "debug")
 
 
 _TIMING_DICT = OrderedDict[str, list[numbers.Number]]
 
 
 class ProtoClient:
-    def _attach_to_backbone(self) -> BackboneFeatureStore:
+    def _attach_to_backbone(
+        self, wait_timeout: float = 0, create_bb: bool = False
+    ) -> BackboneFeatureStore:
         """Use the supplied environment variables to attach
         to a pre-existing backbone featurestore. Requires the
         environment to contain `_SMARTSIM_INFRA_BACKBONE`
@@ -72,82 +78,65 @@ class ProtoClient:
         :returns: the attached backbone featurestore"""
         # todo: ensure this env var from config loader or constant
         descriptor = os.environ.get("_SMARTSIM_INFRA_BACKBONE", None)
-        if descriptor is not None:
-            self._backbone = BackboneFeatureStore.from_descriptor(descriptor)
-        else:
-            logger.warning("No backbone descriptor available in environment variables")
-            #     # NOTE!!!
-            #     # this branching added to support testing the mock_app changes and
-            #     # should not remain (e.g. do NOT allow the app to create the backbone)
-            try:
-                storage = DDict(n_nodes=5, total_mem=5 * 1024**3)
-                self._backbone = BackboneFeatureStore(storage)
-            except Exception:
-                logger.error(
-                    "Unable to create a distributed dictionary to serve as backbone",
-                    exc_info=True,
-                )
+        if descriptor is None:
+            raise SmartSimError(
+                "Missing required backbone configuration in environment"
+            )
+
+        backbone = t.cast(
+            BackboneFeatureStore, BackboneFeatureStore.from_descriptor(descriptor)
+        )
+        backbone.wait_timeout = wait_timeout
+        return backbone
 
     def _attach_to_worker_queue(self) -> None:
-        """Perform a blocking wait until successful retrieval of
-        the worker queue descriptor from the backbone. Once the
-        descriptor is retrieved, attaches a local FLI instance"""
-        to_worker_fli_str = None
-        import itertools
+        """Wait until the backbone contains the worker queue configuration,
+        then attach an FLI to the given worker queue"""
+        configuration = self._backbone.wait_for(
+            [ReservedKeys.MLI_WORKER_QUEUE], timeout=self._queue_timeout
+        )
 
-        backoff = [0.1, 0.5, 1, 2, 4, 8]
-        backoff_iter = itertools.cycle(backoff)
+        descriptor = configuration.get(ReservedKeys.MLI_WORKER_QUEUE, None)
+        if not descriptor:
+            raise ValueError("Unable to locate worker queue using backbone")
 
-        while to_worker_fli_str is None:
-            try:
-                # to_worker_fli_str = self._backbone["to_worker_fli"]
-                to_worker_fli_str = self._backbone.worker_queue
-                if to_worker_fli_str:
-                    self._to_worker_fli = fli.FLInterface.attach(to_worker_fli_str)
-                    logger.debug(
-                        "successfully retrieved `to_worker_fli_str` from backbone"
-                    )
-                    continue
+        # self._to_worker_fli = DragonFLIChannel.from_descriptor(descriptor)
+        return DragonFLIChannel.from_descriptor(descriptor)
 
-            except KeyError:
-                ...
-            finally:
-                delay = next(backoff_iter)
-                logger.debug("Re-attempting `to_worker_fli_str` retrieval in {delay}s")
-                time.sleep(delay)
-
-    def _create_worker_channels(self) -> None:
+    def _create_worker_channels(self) -> t.Tuple[DragonCommChannel, DragonCommChannel]:
         """Create channels to be used in the worker queue"""
         # self._from_worker_ch = Channel.make_process_local()
-        self._from_worker_ch = DragonCommChannel.from_local()
+        _from_worker_ch = DragonCommChannel.from_local()
         # self._from_worker_ch_serialized = self._from_worker_ch.serialize()
-        self._from_worker_ch_serialized = self._from_worker_ch.descriptor
         # self._to_worker_ch = Channel.make_process_local()
-        self._to_worker_ch = DragonCommChannel.from_local()
+        _to_worker_ch = DragonCommChannel.from_local()
+
+        return _from_worker_ch, _to_worker_ch
 
     def _create_publisher(self) -> EventPublisher:
         """Create an event publisher that will broadcast updates to
-        MLI components
+        other MLI components. This publisher
 
         :returns: the event publisher instance"""
-        self._publisher: EventPublisher = EventBroadcaster(
+        publisher: EventPublisher = EventBroadcaster(
             self._backbone, DragonCommChannel.from_descriptor
         )
-        return self._publisher
+        return publisher
 
-    def __init__(self, timing_on: bool):
+    def __init__(self, timing_on: bool, wait_timeout: float = 0):
+        """Initialize the client instance
+
+        :param timing_on: Flag indicating if timing information should be written to file
+        :param wait_timeout: Maximum wait time allowed to attach to the worker queue
+
+        :raises: SmartSimError if unable to attach to a backbone featurestore"""
+        self._queue_timeout = wait_timeout
+
         connect_to_infrastructure()
         # ddict_str = os.environ["_SMARTSIM_INFRA_BACKBONE"]
         # self._ddict = DDict.attach(ddict_str)
         # self._backbone_descriptor = DragonFeatureStore(self._ddict).descriptor
-        try:
-            self._attach_to_backbone()
-            logger.debug("Backbone attached successfully")
-        except Exception:
-            logger.error(
-                "An error occurred while attaching to the backbone", exc_info=True
-            )
-            return
+        self._backbone = self._attach_to_backbone(wait_timeout=wait_timeout)
 
         # # to_worker_fli_str = None
         # # while to_worker_fli_str is None:
@@ -156,19 +145,22 @@ class ProtoClient:
         # #         self._to_worker_fli = fli.FLInterface.attach(to_worker_fli_str)
         # #     except KeyError:
         # #         time.sleep(1)
-        # self._attach_to_worker_queue()
 
-        # # self._from_worker_ch = Channel.make_process_local()
-        # # self._from_worker_ch_serialized = self._from_worker_ch.serialize()
-        # # self._to_worker_ch = Channel.make_process_local()
-        # self._create_worker_channels()
+        self._to_worker_fli = self._attach_to_worker_queue()
 
-        # self._create_publisher()
+        # # # self._from_worker_ch = Channel.make_process_local()
+        # # # self._from_worker_ch_serialized = self._from_worker_ch.serialize()
+        # # # self._to_worker_ch = Channel.make_process_local()
+        channels = self._create_worker_channels()
+        self._from_worker_ch = channels[0]
+        self._to_worker_ch = channels[1]
 
-        # self._start = None
-        # self._interm = None
-        # self._timings: _TIMING_DICT = OrderedDict()
-        # self._timing_on = timing_on
+        self._publisher = self._create_publisher()
+
+        self._start = None
+        self._interm = None
+        self._timings: _TIMING_DICT = OrderedDict()
+        self._timing_on = timing_on
 
     def _add_label_to_timings(self, label: str):
         if label not in self._timings:
@@ -221,11 +213,13 @@ class ProtoClient:
         self.measure_time("build_tensor_descriptor")
 
         if isinstance(model, str):
-            model_arg = MessageHandler.build_feature_store_key(model, self._backbone_descriptor)
+            model_arg = MessageHandler.build_feature_store_key(
+                model, self._backbone.descriptor
+            )
         else:
             model_arg = MessageHandler.build_model(model, "resnet-50", "1.0")
         request = MessageHandler.build_request(
-            reply_channel=self._from_worker_ch_serialized,
+            reply_channel=self._from_worker_ch.descriptor,
             model=model_arg,
             inputs=[built_tensor_desc],
             outputs=[],
@@ -236,7 +230,7 @@ class ProtoClient:
         request_bytes = MessageHandler.serialize_request(request)
         self.measure_time("serialize_request")
 
-        with self._to_worker_fli.sendh(
+        with self._to_worker_fli._channel.sendh(
             timeout=None, stream_channel=self._to_worker_ch.channel
         ) as to_sendh:
             to_sendh.send_bytes(request_bytes)
@@ -306,7 +300,7 @@ if __name__ == "__main__":
     # resnet = ResNetWrapper("resnet50", f"resnet50.{args.device.upper()}.pt")
     resnet = ResNetWrapper("resnet50", model_path)
 
-    client = ProtoClient(timing_on=True)
+    client = ProtoClient(timing_on=True, wait_timeout=0)
     # client.set_model(resnet.name, resnet.model)
 
     # total_iterations = 100

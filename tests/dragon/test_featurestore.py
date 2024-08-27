@@ -24,9 +24,18 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+
+import multiprocessing as mp
+import random
+import time
 import typing as t
+import unittest.mock as mock
+import uuid
 
 import pytest
+
+from smartsim._core.mli.comm.channel.dragonfli import DragonFLIChannel
+from smartsim.error.errors import SmartSimError
 
 dragon = pytest.importorskip("dragon")
 
@@ -39,9 +48,16 @@ from smartsim._core.mli.infrastructure.storage.backbonefeaturestore import (
     OnCreateConsumer,
     OnWriteFeatureStore,
 )
+from smartsim._core.mli.infrastructure.storage.backbonefeaturestore import (
+    time as bbtime,
+)
 from smartsim._core.mli.infrastructure.storage.dragonfeaturestore import dragon_ddict
+from smartsim.log import get_logger
+
+logger = get_logger(__name__)
 
 # isort: off
+from dragon import fli
 from dragon.channels import Channel
 
 # isort: on
@@ -52,11 +68,39 @@ if t.TYPE_CHECKING:
 
 # The tests in this file must run in a dragon environment
 pytestmark = pytest.mark.dragon
+WORK_QUEUE_KEY = "_SMARTSIM_REQUEST_QUEUE"
 
 
 @pytest.fixture
 def storage_for_dragon_fs() -> t.Dict[str, str]:
-    return dragon_ddict.DDict()
+    return dragon_ddict.DDict(1, 2, total_mem=2 * 1024**3)
+
+
+@pytest.fixture
+def storage_for_dragon_fs_with_req_queue(
+    storage_for_dragon_fs: t.Dict[str, str]
+) -> t.Dict[str, str]:
+    # create a valid FLI so any call to attach does not fail
+    channel_ = Channel.make_process_local()
+    fli_ = fli.FLInterface(main_ch=channel_, manager_ch=None)
+    comm_channel = DragonFLIChannel(fli_, True)
+
+    storage_for_dragon_fs[WORK_QUEUE_KEY] = comm_channel.descriptor
+    return storage_for_dragon_fs
+
+
+@pytest.fixture
+def storage_for_dragon_fs_with_mock_req_queue(
+    storage_for_dragon_fs: t.Dict[str, str]
+) -> t.Dict[str, str]:
+    # # create a valid FLI so any call to attach does not fail
+    # channel_ = Channel.make_process_local()
+    # fli_ = fli.FLInterface(main_ch=channel_, manager_ch=None)
+    # comm_channel = DragonFLIChannel(fli_, True)
+
+    mock_descriptor = "12345"
+    storage_for_dragon_fs[WORK_QUEUE_KEY] = mock_descriptor
+    return storage_for_dragon_fs
 
 
 def test_eventconsumer_eventpublisher_integration(
@@ -149,3 +193,126 @@ def test_eventconsumer_eventpublisher_integration(
     # hypothetical app has no filters and will get all events
     app_messages = capp_consumer.receive()
     assert len(app_messages) == 4
+
+
+def test_backbone_wait_for_prepopulated(
+    storage_for_dragon_fs_with_req_queue: t.Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify that asking the backbone to wait for a value succeed
+    immediately and do not cause a wait to occur if the data exists
+
+    :param storage_for_dragon_fs: the storage engine to use, prepopulated with
+    """
+    # set a very low timeout to confirm that it does not wait
+    wait_timeout = 0.1
+    # storage = {WORK_QUEUE_KEY: "123456"}
+    storage = storage_for_dragon_fs_with_req_queue
+
+    backbone = BackboneFeatureStore(storage, wait_timeout=wait_timeout)
+
+    with monkeypatch.context() as ctx:
+        # all keys should be found and the timeout should never be checked.
+        ctx.setattr(bbtime, "sleep", mock.MagicMock())
+
+        values = backbone.wait_for([WORK_QUEUE_KEY])
+
+        # confirm that wait_for with one key returns one value
+        assert len(values) == 1
+
+        # confirm that the descriptor is non-null w/some non-trivial value
+        assert len(values[WORK_QUEUE_KEY]) > 5
+
+        # confirm that no wait occurred
+        bbtime.sleep.assert_not_called()
+
+
+def set_value_after_delay(
+    descriptor: str, key: str, value: str, delay: float = 5
+) -> None:
+    """Helper method to persist a random value into the backbone
+
+    :param descriptor: the backbone feature store descriptor to attach to
+    :param key: the key to write to
+    :param value: a value to write to the key"""
+    time.sleep(delay)
+
+    backbone = BackboneFeatureStore.from_descriptor(descriptor)
+    backbone[key] = value
+    logger.debug(f"wrote {value} to backbone[`{key}`]")
+
+
+@pytest.mark.parametrize("delay", [0, 1, 2, 4, 8])
+def test_backbone_wait_for_partial_prepopulated(
+    storage_for_dragon_fs_with_mock_req_queue: t.Any, delay: float
+) -> None:
+    """Verify that when data is not all in the backbone, the `wait_for` operation
+    continues to poll until it finds everything it needs
+
+    :param storage_for_dragon_fs: the storage engine to use, prepopulated with
+    :param delay: the number of seconds the second process will wait before
+    setting the target value in the backbone featurestore
+    """
+    # set a very low timeout to confirm that it does not wait
+    wait_timeout = 15
+    storage = storage_for_dragon_fs_with_mock_req_queue
+    backbone = BackboneFeatureStore(storage, wait_timeout=wait_timeout)
+
+    key, value = str(uuid.uuid4()), str(int(random.random() * 10000))
+    p = mp.Process(
+        target=set_value_after_delay, args=(backbone.descriptor, key, value, delay)
+    )
+    p.start()
+
+    # wait_for should complete after `delay` seconds
+    ret_vals = backbone.wait_for([WORK_QUEUE_KEY, key])
+
+    # confirm that wait_for with two keys returns two values
+    assert len(ret_vals) == 2, "values should contain values for both awaited keys"
+
+    # confirm the pre-populated value has the correct output
+    assert ret_vals[WORK_QUEUE_KEY] == "12345"  # mock descriptor value from fixture
+
+    # confirm the population process completed and the awaited value is correct
+    assert ret_vals[key] == value, "verify order of values "
+
+
+@pytest.mark.parametrize("num_keys", [0, 1, 2, 11, 22])
+def test_backbone_wait_for_multikey(
+    storage_for_dragon_fs_with_req_queue: t.Any,
+    num_keys: int,
+) -> None:
+    """Verify that asking the backbone to wait for multiple keys results
+    in that number of values being returned
+
+    :param storage_for_dragon_fs: the storage engine to use, prepopulated with
+    :param num_keys: the number of extra keys to set & request in the backbone
+    """
+    # maximum delay allowed for setter processes
+    max_delay = 5
+    storage = storage_for_dragon_fs_with_req_queue
+    backbone = BackboneFeatureStore(storage)
+
+    extra_keys = [str(uuid.uuid4()) for _ in range(num_keys)]
+    extra_values = [str(uuid.uuid4()) for _ in range(num_keys)]
+    extras = dict(zip(extra_keys, extra_values))
+    delays = [random.random() * max_delay for _ in range(num_keys)]
+    processes = []
+
+    for key, value, delay in zip(extra_keys, extra_values, delays):
+        logger.debug(f"Delaying {key} write by {delay} seconds")
+        p = mp.Process(
+            target=set_value_after_delay, args=(backbone.descriptor, key, value, delay)
+        )
+        p.start()
+        processes.append(p)
+
+    actual_values = backbone.wait_for([*extra_keys])
+    for process in processes:
+        process.join()
+
+    # confirm that wait_for returns all the expected values
+    assert len(actual_values) == num_keys
+
+    # confirm that the returned values match (e.g. are returned in the right order)
+    for k in extras:
+        assert extras[k] == actual_values[k]

@@ -59,7 +59,7 @@ class FileSystemCommChannel(CommChannelBase):
 
         :param value: The value to send"""
         logger.debug(
-            f"Channel {self.descriptor.decode('utf-8')} sending message to {self._file_path}"
+            f"Channel {self.descriptor} sending message to {self._file_path}"
         )
         with self._lock:
             # write as text so we can add newlines as delimiters

@@ -117,6 +117,9 @@ class DragonFLIChannel(cch.CommChannelBase):
 
         :param descriptor: the descriptor of the main FLI channel to attach
         :returns: An attached DragonFLIChannel"""
+        if not descriptor:
+            raise ValueError("Invalid descriptor provided")
+
         try:
             return DragonFLIChannel(
                 fli_=cls._string_descriptor_to_fli(descriptor),

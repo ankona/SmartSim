@@ -67,7 +67,10 @@ class BackboneFeatureStore(DragonFeatureStore):
     information stored in the MLI backbone feature store"""
 
     def __init__(
-        self, storage: "dragon_ddict.DDict", allow_write: bool = False
+        self,
+        storage: "dragon_ddict.DDict",
+        allow_write: bool = False,
+        wait_timeout: float = 30,
     ) -> None:
         """Initialize the DragonFeatureStore instance
 
@@ -77,6 +80,7 @@ class BackboneFeatureStore(DragonFeatureStore):
         storage mechanism of the feature store"""
         super().__init__(storage)
         self._reserved_write_enabled = allow_write
+        self._wait_timeout = wait_timeout
 
     @property
     def notification_channels(self) -> t.Sequence[str]:
@@ -148,6 +152,66 @@ class BackboneFeatureStore(DragonFeatureStore):
             raise SmartSimError(
                 f"Error creating dragon feature store: {descriptor}"
             ) from ex
+
+    @property
+    def wait_timeout(self) -> float:
+        return self._wait_timeout
+
+    @wait_timeout.setter
+    def wait_timeout(self, value: float) -> float:
+        self._wait_timeout = value
+
+    def _check_wait_timeout(
+        self, start_time: float, timeout: float, indicators: t.Dict[str, bool]
+    ) -> None:
+        """Perform"""
+        timeout = timeout or self._wait_timeout
+        if timeout > 0 and time.time() - start_time > timeout:
+            raise SmartSimError(
+                f"Timeout retrieving all keys from backbone: {indicators}"
+            )
+
+    def wait_for(
+        self, keys: t.List[str], timeout: float = 0
+    ) -> t.Dict[str, t.Union[str, bytes, None]]:
+        """Perform a blocking wait until all specified keys have been found
+        in the backbone
+
+        :param keys: The required collection of keys to retrieve
+        :param timeout: The maximum wait time in seconds. Overrides class level setting
+        """
+
+        to_check = list(keys)
+        was_found = [False for _ in to_check]  # add test ensuring dupes are handled..
+        values = [None for _ in to_check]
+
+        backoff = [0.1, 0.5, 1, 2, 4, 8]
+        backoff_iter = itertools.cycle(backoff)
+        start_time = time.time()
+
+        while not all(was_found):
+            for index, key in enumerate(to_check):
+                if was_found[index]:
+                    continue
+
+                try:
+                    values[index] = self[key]
+                    was_found[index] = True
+                except KeyError:
+                    ...
+
+            if all(was_found):
+                continue
+
+            self._check_wait_timeout(
+                start_time, timeout, dict(zip(to_check, was_found))
+            )
+
+            delay = next(backoff_iter)
+            logger.debug(f"Re-attempting `{key}` retrieval in {delay}s")
+            time.sleep(delay)
+
+        return dict(zip(keys, values))
 
 
 class EventCategory(str, enum.Enum):
@@ -516,18 +580,3 @@ class EventConsumer:
             incoming_messages = self.receive()
             for message in incoming_messages:
                 fn(message)
-
-
-# 1. backend starts
-#     1.1. backend creates callback channel and puts into backbone
-# 2. backend creates worker manager
-#     2.1. worker manager constructs an EventSender to callback to backend
-#         2.1.1. wmgr sends registration message
-#         2.1.2. wmgr polls consumer list until it is found
-
-#     2.2. worker manager constructs an EventBroadcaster to broadcast events
-
-
-# 1. backend starts
-# 2. backend creates worker manager
-#     2.1. worker manager creates EventSender
