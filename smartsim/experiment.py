@@ -183,7 +183,7 @@ class Experiment:
         jobs_ = list(_helpers.unpack(jobs))
 
         run_id = datetime.datetime.now().replace(microsecond=0).isoformat()
-        root = pathlib.Path(self.exp_path, run_id)
+        root = pathlib.Path(self.exp_path, run_id.replace(":", "."))
         return self._dispatch(Generator(root), dispatch.DEFAULT_DISPATCHER, *jobs_)
 
     def _dispatch(
