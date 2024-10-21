@@ -167,6 +167,13 @@ def execute(
     is_dragon_requested = args.dragon
     dragon_repo = args.dragon_repo
     dragon_version = args.dragon_version
+<<<<<<< HEAD
+=======
+
+    if Path(CONFIG.build_path).exists():
+        logger.warning(f"Build path already exists, removing: {CONFIG.build_path}")
+        shutil.rmtree(CONFIG.build_path)
+>>>>>>> v1.0
 
     # The user should never have to specify the OS and Architecture
     current_platform = Platform(
