@@ -85,17 +85,14 @@ class EchoHelloWorldEntity(SmartSimEntity):
 def mock_job() -> unittest.mock.MagicMock:
     """Fixture to create a mock Job."""
     job = unittest.mock.MagicMock(
-        **{
-            "entity": EchoHelloWorldEntity(),
-            "name": "test_job",
-            "get_launch_steps": unittest.mock.MagicMock(
-                side_effect=lambda: NotImplementedError()
-            ),
-        },
+        entity=EchoHelloWorldEntity(),
+        name="test_job",
+        get_launch_steps=unittest.mock.MagicMock(
+            side_effect=lambda: NotImplementedError()
+        ),
         spec=Job,
     )
     yield job
-
 
 # UNIT TESTS
 
