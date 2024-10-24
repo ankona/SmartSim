@@ -41,10 +41,8 @@ import typing as t
 import uuid
 import warnings
 from datetime import datetime
-from pathlib import Path
 from shutil import which
 
-from deprecated import deprecated
 from typing_extensions import TypeAlias
 
 if t.TYPE_CHECKING:
@@ -267,57 +265,6 @@ def cat_arg_and_value(arg_name: str, value: str) -> str:
         return f"-{arg_name} {value}"
 
     return f"--{arg_name}={value}"
-
-
-@deprecated("Remove after completing fixes in MLI tests post-merge of refactor")
-def _installed(base_path: Path, backend: str) -> bool:
-    """
-    Check if a backend is available for the RedisAI module.
-    """
-    backend_key = f"redisai_{backend}"
-    backend_path = base_path / backend_key / f"{backend_key}.so"
-    backend_so = Path(os.environ.get("SMARTSIM_RAI_LIB", backend_path)).resolve()
-
-    return backend_so.is_file()
-
-
-@deprecated("Remove after completing fixes in MLI tests post-merge of refactor")
-def redis_install_base(backends_path: t.Optional[str] = None) -> Path:
-    # pylint: disable-next=import-outside-toplevel
-    from ..._core.config import CONFIG
-
-    base_path: Path = (
-        Path(backends_path) if backends_path else CONFIG.lib_path / "backends"
-    )
-    return base_path
-
-
-@deprecated("Remove after completing fixes in MLI tests post-merge of refactor")
-def installed_redisai_backends(
-    backends_path: t.Optional[str] = None,
-) -> t.Set[_TRedisAIBackendStr]:
-    """Check which ML backends are available for the RedisAI module.
-
-    The optional argument ``backends_path`` is needed if the backends
-    have not been built as part of the SmartSim building process (i.e.
-    they have not been built by invoking `smart build`). In that case
-    ``backends_path`` should point to the directory containing e.g.
-    the backend directories (`redisai_tensorflow`, `redisai_torch`,
-    `redisai_onnxruntime`, or `redisai_tflite`).
-
-    :param backends_path: path containing backends
-    :return: list of installed RedisAI backends
-    """
-    # import here to avoid circular import
-    base_path = redis_install_base(backends_path)
-    backends: t.Set[_TRedisAIBackendStr] = {
-        "tensorflow",
-        "torch",
-        "onnxruntime",
-    }
-
-    installed = {backend for backend in backends if _installed(base_path, backend)}
-    return installed
 
 
 def get_ts_ms() -> int:

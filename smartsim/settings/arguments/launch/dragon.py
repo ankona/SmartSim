@@ -86,7 +86,6 @@ class DragonLaunchArguments(LaunchArguments):
             raise TypeError("feature_list must be string or list of strings")
         self.set("node-feature", ",".join(feature_list))
 
-    @override
     def set_hostlist(self, host_list: t.Union[str, t.List[str]]) -> None:
         """Specify the hostlist for this job
 
@@ -103,28 +102,7 @@ class DragonLaunchArguments(LaunchArguments):
         cleaned_list = [host.strip() for host in host_list if host and host.strip()]
         if not len(cleaned_list) == len(host_list):
             raise ValueError(f"invalid names found in hostlist: {host_list}")
-
-        self.run_args["host-list"] = ",".join(cleaned_list)
-
-    @override
-    def set_hostlist(self, host_list: t.Union[str, t.List[str]]) -> None:
-        """Specify the hostlist for this job
-
-        :param host_list: hosts to launch on
-        :raises ValueError: if an empty host list is supplied
-        """
-        if not host_list:
-            raise ValueError("empty hostlist provided")
-
-        if isinstance(host_list, str):
-            host_list = host_list.replace(" ", "").split(",")
-
-        # strip out all whitespace-only values
-        cleaned_list = [host.strip() for host in host_list if host and host.strip()]
-        if not len(cleaned_list) == len(host_list):
-            raise ValueError(f"invalid names found in hostlist: {host_list}")
-
-        self.run_args["host-list"] = ",".join(cleaned_list)
+        self.set("host-list", ",".join(cleaned_list))
 
     def set_cpu_affinity(self, devices: t.List[int]) -> None:
         """Set the CPU affinity for this job
