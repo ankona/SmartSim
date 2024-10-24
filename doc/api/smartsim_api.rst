@@ -41,7 +41,7 @@ Settings
 
 .. currentmodule:: smartsim.settings
 
-Settings are provided to ``Model`` and ``Ensemble`` objects
+Settings are provided to ``Application`` and ``Ensemble`` objects
 to provide parameters for how a job should be executed. For
 more information, see ``LaunchSettings``
 
@@ -127,7 +127,7 @@ container.
     :undoc-members:
     :members:
 
-.. _orc_api:
+.. _featurestore_api:
 
 FeatureStore
 ============
@@ -170,7 +170,7 @@ FeatureStore
    :inherited-members:
    :undoc-members:
 
-.. _model_api:
+.. _application_api:
 
 Application
 ===========

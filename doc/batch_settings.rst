@@ -6,7 +6,7 @@ Batch Settings
 ========
 Overview
 ========
-SmartSim provides functionality to launch entities (``Model`` or ``Ensemble``)
+SmartSim provides functionality to launch entities (``Application`` or ``Ensemble``)
 as batch jobs supported by the ``BatchSettings`` base class. While the ``BatchSettings`` base
 class is not intended for direct use by users, its derived child classes offer batch
 launching capabilities tailored for specific workload managers (WLMs). Each SmartSim
@@ -61,7 +61,7 @@ Below are examples of how to initialize a ``BatchSettings`` object per `launcher
           sbatch_settings.set_queue("default")
 
       The initialized ``SbatchSettings`` instance can now be passed to a SmartSim entity
-      (``Model`` or ``Ensemble``) via the `batch_settings` argument in ``create_batch_settings``.
+      (``Application`` or ``Ensemble``) via the `batch_settings` argument in ``create_batch_settings``.
 
       .. note::
         If `launcher="auto"`, SmartSim will detect that the ``Experiment`` is running on a Slurm based
@@ -87,7 +87,7 @@ Below are examples of how to initialize a ``BatchSettings`` object per `launcher
             qsub_batch_settings.set_queue("default")
 
       The initialized ``QsubBatchSettings`` instance can now be passed to a SmartSim entity
-      (``Model`` or ``Ensemble``) via the `batch_settings` argument in ``create_batch_settings``.
+      (``Application`` or ``Ensemble``) via the `batch_settings` argument in ``create_batch_settings``.
 
       .. note::
         If `launcher="auto"`, SmartSim will detect that the ``Experiment`` is running on a PBS Pro based
@@ -113,7 +113,7 @@ Below are examples of how to initialize a ``BatchSettings`` object per `launcher
             bsub_batch_settings.set_queue("default")
 
       The initialized ``BsubBatchSettings`` instance can now be passed to a SmartSim entity
-      (``Model`` or ``Ensemble``) via the `batch_settings` argument in ``create_batch_settings``.
+      (``Application`` or ``Ensemble``) via the `batch_settings` argument in ``create_batch_settings``.
 
       .. note::
         If `launcher="auto"`, SmartSim will detect that the ``Experiment`` is running on a LSF based

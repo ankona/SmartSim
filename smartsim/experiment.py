@@ -393,7 +393,7 @@ class Experiment:
         """Preview entity information prior to launch. This method
         aggregates multiple pieces of information to give users insight
         into what and how entities will be launched.  Any instance of
-        ``Model``, ``Ensemble``, or ``Feature Store`` created by the
+        ``Application``, ``Ensemble``, or ``Feature Store`` created by the
         Experiment can be passed as an argument to the preview method.
 
         Verbosity levels:

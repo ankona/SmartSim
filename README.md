@@ -248,7 +248,7 @@ sbatch run_hello_world.sh
 ### Batch Launch Examples
 
 SmartSim can also launch workloads in a batch directly from Python, without the need
-for a batch script. Users can launch groups of ``Model`` instances in a ``Ensemble``.
+for a batch script. Users can launch groups of ``Application`` instances in a ``Ensemble``.
 
 The following launches 4 replicas of the the same ``hello_world`` model.
 
@@ -293,7 +293,7 @@ initialization. Local launching does not support batch workloads.
 
 ## Redis + RedisAI
 
-The ``Orchestrator`` is an in-memory database that utilizes Redis and RedisAI to provide
+The ``FeatureStore`` is an in-memory database that utilizes Redis and RedisAI to provide
 a distributed database and access to ML runtimes from Fortran, C, C++ and Python.
 
 SmartSim provides classes that make it simple to launch the database in many
@@ -307,7 +307,7 @@ how to use the database to perform ML inference and processing.
 The following script launches a single database using the local launcher.
 
 [Experiment.create_database](https://www.craylabs.org/docs/api/smartsim_api.html#smartsim.experiment.Experiment.create_database)
-will initialize an ``Orchestrator`` instance corresponding to the specified launcher.
+will initialize an ``FeatureStore`` instance corresponding to the specified launcher.
 
 ```python
 # run_db_local.py
@@ -329,7 +329,7 @@ exp.stop(db)
 
 ### Interactive Launch
 
-The ``Orchestrator``, like ``Ensemble`` instances, can be launched locally, in interactive
+The ``FeatureStore``, like ``Ensemble`` instances, can be launched locally, in interactive
 allocations, or in a batch.
 
 The following example launches a distributed (3 node) database cluster
@@ -373,7 +373,7 @@ python run_db.py
 
 ### Batch Launch
 
-The ``Orchestrator`` can also be launched in a batch without the need for an interactive allocation.
+The ``FeatureStore`` can also be launched in a batch without the need for an interactive allocation.
 SmartSim will create the batch file, submit it to the batch system, and then wait for the database
 to be launched. Users can hit CTRL-C to cancel the launch if needed.
 

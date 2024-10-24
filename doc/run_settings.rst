@@ -6,7 +6,7 @@ Run Settings
 ========
 Overview
 ========
-``RunSettings`` are used in the SmartSim API to define how ``Model`` and ``Ensemble`` jobs
+``RunSettings`` are used in the SmartSim API to define how ``Application`` and ``Ensemble`` jobs
 should be executed.
 
 In general, ``RunSettings`` define:

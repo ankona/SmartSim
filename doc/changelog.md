@@ -13,6 +13,7 @@ Jump to:
 
 Description
 
+- Update documentation to build under v1.0 API
 - Merge core refactor into MLI feature branch
 - Implement asynchronous notifications for shared data
 - Quick bug fix in _validate
