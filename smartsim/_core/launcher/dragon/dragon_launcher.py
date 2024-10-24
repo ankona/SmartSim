@@ -400,11 +400,6 @@ def _as_run_request_args_and_policy(
         DragonRunRequestView(
             exe=exe_,
             exe_args=args,
-            # FIXME: Currently this is hard coded because the schema requires
-            #        it, but in future, it is almost certainly necessary that
-            #        this will need to be injected by the user or by us to have
-            #        the command execute next to any generated files. A similar
-            #        problem exists for the other settings.
             path=path,
             env=env,
             # TODO: Not sure how this info is injected
