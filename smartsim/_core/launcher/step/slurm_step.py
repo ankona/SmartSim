@@ -221,7 +221,7 @@ class SrunStep(Step):
         cmd = exe + args
 
         compound_env_vars = []
-        for mpmd_rs in self._get_mpmd():  # returns a list of runsettings
+        for mpmd_rs in self._get_mpmd():
             cmd += [" : "]
             cmd += mpmd_rs.format_run_args()
             cmd += ["--job-name", self.name]
