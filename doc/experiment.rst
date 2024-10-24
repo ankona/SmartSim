@@ -18,17 +18,17 @@ methods:
 * :ref:`Model<model_exp_docs>`
 * :ref:`Ensemble<ensemble_exp_docs>`
 
-Settings are given to ``Model`` and ``Ensemble`` objects to provide parameters for how the job should be executed. The
+Settings are given to ``Application`` and ``Ensemble`` objects to provide parameters for how the job should be executed. The
 :ref:`Experiment API<experiment_api>` offers two customizable Settings objects that are created via the factory methods:
 
 * :ref:`RunSettings<run_settings_doc>`
 * :ref:`BatchSettings<batch_settings_doc>`
 
-Once a workflow component is initialized (e.g. ``Orchestrator``, ``Model`` or ``Ensemble``), a user has access
+Once a workflow component is initialized (e.g. ``FeatureStore``, ``Application`` or ``Ensemble``), a user has access
 to the associated entity API which supports configuring and retrieving the entities' information:
 
-* :ref:`Orchestrator API<orchestrator_api>`
-* :ref:`Model API<model_api>`
+* :ref:`FeatureStore API<feature_api>`
+* :ref:`Application API<application_api>`
 * :ref:`Ensemble API<ensemble_api>`
 
 There is no limit to the number of SmartSim entities a user can
@@ -38,7 +38,7 @@ initialize within an ``Experiment``.
 
   Sample ``Experiment`` showing a user application leveraging
   machine learning infrastructure launched by SmartSim and connected
-  to online analysis and visualization via the in-memory ``Orchestrator``.
+  to online analysis and visualization via the in-memory ``FeatureStore``.
 
 Find an example of the ``Experiment`` class and factory methods used within a
 workflow in the :ref:`Example<exp_example>` section of this page.
@@ -81,8 +81,8 @@ Entities are SmartSim API objects that can be launched and
 managed on the compute system through the ``Experiment`` API.
 The SmartSim entities include:
 
-* ``Orchestrator``
-* ``Model``
+* ``FeatureStore``
+* ``Application``
 * ``Ensemble``
 
 While the ``Experiment`` object is intended to be instantiated once in the
@@ -103,10 +103,10 @@ associated ``Experiment.create_...`` factory method shown below.
      - Return Type
    * - ``create_database``
      - ``orch = exp.create_database([port, db_nodes, ...])``
-     - :ref:`Orchestrator <orchestrator_api>`
+     - :ref:`FeatureStore <feature_api>`
    * - ``create_model``
      - ``model = exp.create_model(name, run_settings)``
-     - :ref:`Model <model_api>`
+     - :ref:`Application <application_api>`
    * - ``create_ensemble``
      - ``ensemble = exp.create_ensemble(name[, params, ...])``
      - :ref:`Ensemble <ensemble_api>`
@@ -139,11 +139,11 @@ the ``Experiment`` post-creation methods.
 Orchestrator
 ============
 The :ref:`Orchestrator<orch_docs>` is an in-memory database built for
-a wide variety of AI-enabled workflows. The ``Orchestrator`` can be thought of as a general
-feature store for numerical data, ML models, and scripts. The ``Orchestrator`` is capable
+a wide variety of AI-enabled workflows. The ``FeatureStore`` can be thought of as a general
+feature store for numerical data, ML models, and scripts. The ``FeatureStore`` is capable
 of performing inference and script evaluation using data in the feature store.
-Any SmartSim ``Model`` or ``Ensemble`` member can connect to the
-``Orchestrator`` via the :ref:`SmartRedis<smartredis-api>`
+Any SmartSim ``Application`` or ``Ensemble`` member can connect to the
+``FeatureStore`` via the :ref:`SmartRedis<smartredis-api>`
 ``Client`` library to transmit data, execute ML models, and execute scripts.
 
 **SmartSim Offers Two Types of Orchestrator Deployments:**
@@ -151,22 +151,22 @@ Any SmartSim ``Model`` or ``Ensemble`` member can connect to the
 * :ref:`Standalone Orchestrator Deployment<standalone_orch_doc>`
 * :ref:`Colocated Orchestrator Deployment<colocated_orch_doc>`
 
-To create a standalone ``Orchestrator`` that does not share compute resources with other
+To create a standalone ``FeatureStore`` that does not share compute resources with other
 SmartSim entities, use the ``Experiment.create_database`` factory method which
-returns an ``Orchestrator`` object. To create a colocated ``Orchestrator`` that
-shares compute resources with a ``Model``, use the ``Model.colocate_db_tcp``
+returns an ``FeatureStore`` object. To create a colocated ``FeatureStore`` that
+shares compute resources with a ``Application``, use the ``Model.colocate_db_tcp``
 or ``Model.colocate_db_uds`` member functions accessible after a
-``Model`` object has been initialized. The functions instruct
-SmartSim to launch an ``Orchestrator`` on the application compute nodes. An ``Orchestrator`` object is not
+``Application`` object has been initialized. The functions instruct
+SmartSim to launch an ``FeatureStore`` on the application compute nodes. An ``FeatureStore`` object is not
 returned from a ``Model.colocate_db`` instruction, and subsequent interactions with the
-colocated ``Orchestrator`` are handled through the :ref:`Model API<model_api>`.
+colocated ``FeatureStore`` are handled through the :ref:`Application API<application_api>`.
 
 SmartSim supports :ref:`multi-database<mutli_orch_doc>` functionality, enabling an ``Experiment`` to have
 several concurrently launched ``Orchestrator(s)``. If there is a need to launch more than
-one ``Orchestrator``, the ``Experiment.create_database`` and ``Model.colocate..``
-functions mandate the specification of a unique ``Orchestrator`` identifier, denoted
-by the `db_identifier` argument for each ``Orchestrator``. The `db_identifier` is used
-in an application script by a SmartRedis ``Client`` to connect to a specific ``Orchestrator``.
+one ``FeatureStore``, the ``Experiment.create_database`` and ``Model.colocate..``
+functions mandate the specification of a unique ``FeatureStore`` identifier, denoted
+by the `db_identifier` argument for each ``FeatureStore``. The `db_identifier` is used
+in an application script by a SmartRedis ``Client`` to connect to a specific ``FeatureStore``.
 
 .. _model_exp_docs:
 
@@ -177,23 +177,23 @@ including applications, scripts, or generally, a program. They can
 interact with other SmartSim entities via data transmitted to/from
 SmartSim ``Orchestrator(s)`` using a SmartRedis ``Client``.
 
-A ``Model`` is created through the factory method: ``Experiment.create_model``.
+A ``Application`` is created through the factory method: ``Experiment.create_model``.
 ``Model(s)`` are initialized with ``RunSettings`` objects that specify
-how a ``Model`` should be launched by a workload manager
+how a ``Application`` should be launched by a workload manager
 (e.g., Slurm) and the compute resources required.
 Optionally, the user may also specify a ``BatchSettings`` object if
-the ``Model`` should be launched as a batch job on the WLM system.
-The ``create_model`` factory method returns an initialized ``Model`` object that
-gives you access to functions associated with the :ref:`Model API<model_api>`.
+the ``Application`` should be launched as a batch job on the WLM system.
+The ``create_model`` factory method returns an initialized ``Application`` object that
+gives you access to functions associated with the :ref:`Application API<application_api>`.
 
-A ``Model`` supports key features, including methods to:
+A ``Application`` supports key features, including methods to:
 
-- :ref:`Attach configuration files<files_doc>` for use at ``Model`` runtime.
-- :ref:`Colocate an Orchestrator<colo_model_doc>` to a SmartSim ``Model``.
-- :ref:`Load an ML model<ai_model_doc>`  into the ``Orchestrator`` at ``Model`` runtime.
-- :ref:`Load a TorchScript function<TS_doc>`  into the ``Orchestrator`` at ``Model`` runtime.
+- :ref:`Attach configuration files<files_doc>` for use at ``Application`` runtime.
+- :ref:`Colocate an Orchestrator<colo_model_doc>` to a SmartSim ``Application``.
+- :ref:`Load an ML model<ai_model_doc>`  into the ``FeatureStore`` at ``Application`` runtime.
+- :ref:`Load a TorchScript function<TS_doc>`  into the ``FeatureStore`` at ``Application`` runtime.
 - :ref:`Enable data collision prevention<model_key_collision>` which allows
-  for reuse of key names in different ``Model`` applications.
+  for reuse of key names in different ``Application`` applications.
 
 Visit the respective links for more information on each topic.
 
@@ -201,10 +201,10 @@ Visit the respective links for more information on each topic.
 
 Ensemble
 ========
-In addition to a single ``Model``, SmartSim allows users to create,
-configure, and launch an :ref:`Ensemble<ensemble_doc>` of ``Model`` objects.
+In addition to a single ``Application``, SmartSim allows users to create,
+configure, and launch an :ref:`Ensemble<ensemble_doc>` of ``Application`` objects.
 ``Ensemble(s)`` can be given parameters and a permutation strategy that define how the
-``Ensemble`` will create the underlying ``Model`` objects. Users may also
+``Ensemble`` will create the underlying ``Application`` objects. Users may also
 manually create and append ``Model(s)`` to an ``Ensemble``. For information
 and examples on ``Ensemble`` creation strategies, visit the :ref:`Initialization<init_ensemble_strategies>`
 section within the ``Ensemble`` documentation.
@@ -212,8 +212,8 @@ section within the ``Ensemble`` documentation.
 An ``Ensemble`` supports key features, including methods to:
 
 - :ref:`Attach configuration files<attach_files_ensemble>` for use at ``Ensemble`` runtime.
-- :ref:`Load an ML model<ai_model_ensemble_doc>` (TF, TF-lite, PT, or ONNX) into the ``Orchestrator`` at ``Ensemble`` runtime.
-- :ref:`Load a TorchScript function<TS_ensemble_doc>` into the ``Orchestrator`` at ``Ensemble`` runtime.
+- :ref:`Load an ML model<ai_model_ensemble_doc>` (TF, TF-lite, PT, or ONNX) into the ``FeatureStore`` at ``Ensemble`` runtime.
+- :ref:`Load a TorchScript function<TS_ensemble_doc>` into the ``FeatureStore`` at ``Ensemble`` runtime.
 - :ref:`Prevent data collisions<prefix_ensemble>` within the ``Ensemble``, which allows for reuse of application code.
 
 Visit the respective links for more information on each topic.
@@ -326,24 +326,24 @@ Example
 =======
 .. compound::
   In the following section, we provide an example of using SmartSim to automate the
-  deployment of an HPC workflow consisting of a ``Model`` and standalone ``Orchestrator``.
+  deployment of an HPC workflow consisting of a ``Application`` and standalone ``FeatureStore``.
   The example demonstrates:
 
   *Initializing*
    - a workflow (``Experiment``)
-   - an in-memory database (standalone ``Orchestrator``)
-   - an application (``Model``)
+   - an in-memory database (standalone ``FeatureStore``)
+   - an application (``Application``)
   *Generating*
-   - the ``Orchestrator`` output directory
-   - the ``Model`` output directory
+   - the ``FeatureStore`` output directory
+   - the ``Application`` output directory
   *Previewing*
-   - the ``Orchestrator`` contents
-   - the ``Model`` contents
+   - the ``FeatureStore`` contents
+   - the ``Application`` contents
   *Starting*
-   - an in-memory database (standalone ``Orchestrator``)
-   - an application (``Model``)
+   - an in-memory database (standalone ``FeatureStore``)
+   - an application (``Application``)
   *Stopping*
-   - an in-memory database (standalone ``Orchestrator``)
+   - an in-memory database (standalone ``FeatureStore``)
 
   The example source code is available in the dropdown below for convenient execution
   and customization.
@@ -370,10 +370,10 @@ Initializing
   summary.
 
 .. compound::
-  Next, launch an in-memory database, referred to as an ``Orchestrator``.
-  To *initialize* an ``Orchestrator`` object, use the ``Experiment.create_database``
-  factory method. Create a multi-sharded ``Orchestrator`` by setting the argument `db_nodes` to three.
-  SmartSim will assign a `port` to the ``Orchestrator`` and attempt to detect your machine's
+  Next, launch an in-memory database, referred to as an ``FeatureStore``.
+  To *initialize* an ``FeatureStore`` object, use the ``Experiment.create_database``
+  factory method. Create a multi-sharded ``FeatureStore`` by setting the argument `db_nodes` to three.
+  SmartSim will assign a `port` to the ``FeatureStore`` and attempt to detect your machine's
   network interface if not provided.
 
   .. literalinclude:: tutorials/doc_examples/experiment_doc_examples/exp.py
@@ -382,13 +382,13 @@ Initializing
     :lines: 10-11
 
 .. compound::
-  Before invoking the factory method to create a ``Model``,
+  Before invoking the factory method to create a ``Application``,
   first create a ``RunSettings`` object. ``RunSettings`` hold the
-  information needed to execute the ``Model`` on the machine. The ``RunSettings``
+  information needed to execute the ``Application`` on the machine. The ``RunSettings``
   object is initialized using the ``Experiment.create_run_settings`` method.
   Specify the executable to run and arguments to pass to the executable.
 
-  The example ``Model`` is a simple `Hello World` program
+  The example ``Application`` is a simple `Hello World` program
   that echos `Hello World` to stdout.
 
   .. literalinclude:: tutorials/doc_examples/experiment_doc_examples/exp.py
@@ -396,7 +396,7 @@ Initializing
     :linenos:
     :lines: 13-14
 
-  After creating the ``RunSettings`` object, initialize the ``Model`` object by passing the `name`
+  After creating the ``RunSettings`` object, initialize the ``Application`` object by passing the `name`
   and `settings` to ``create_model``.
 
   .. literalinclude:: tutorials/doc_examples/experiment_doc_examples/exp.py
@@ -409,8 +409,8 @@ Generating
 .. compound::
   Next we generate the file structure for the ``Experiment``. A call to ``Experiment.generate``
   instructs SmartSim to create directories within the ``Experiment`` folder for each instance passed in.
-  We organize the ``Orchestrator`` and ``Model`` output files within the ``Experiment`` folder by
-  passing the ``Orchestrator`` and ``Model`` instances to ``exp.generate``:
+  We organize the ``FeatureStore`` and ``Application`` output files within the ``Experiment`` folder by
+  passing the ``FeatureStore`` and ``Application`` instances to ``exp.generate``:
 
   .. literalinclude:: tutorials/doc_examples/experiment_doc_examples/exp.py
     :language: python
@@ -421,7 +421,7 @@ Generating
   already exist within the ``Experiment`` directory.
 
   .. note::
-    If files or folders are attached to a ``Model`` or ``Ensemble`` members through ``Model.attach_generator_files``
+    If files or folders are attached to a ``Application`` or ``Ensemble`` members through ``Model.attach_generator_files``
     or ``Ensemble.attach_generator_files``, the attached files or directories will be symlinked, copied, or configured and
     written into the created directory for that instance.
 
@@ -432,7 +432,7 @@ Previewing
 ==========
 .. compound::
   Optionally, users can preview an ``Experiment`` entity. The ``Experiment.preview`` method displays the entity summaries during runtime
-  to offer additional insight into the launch details. Any instance of a ``Model``, ``Ensemble``, or ``Orchestrator`` created by the
+  to offer additional insight into the launch details. Any instance of a ``Application``, ``Ensemble``, or ``FeatureStore`` created by the
   ``Experiment`` can be passed as an argument to the preview method. Additionally, users may specify the name of a file to write preview data to
   via the ``output_filename`` argument, as well as the text format through the ``output_format`` argument. Users can also specify how verbose
   the preview is via the ``verbosity_level`` argument.
@@ -445,7 +445,7 @@ Previewing
   *  `output_format="plain_text"` sets the output format. The only accepted output format is 'plain_text'.
   *  `output_filename="test_name.txt"` specifies name of file and extension to write preview data to. If no output filename is set, the preview will be output to stdout.
 
-  In the example below, we preview the ``Orchestrator`` and ``Model`` entities by passing their instances to ``Experiment.preview``:
+  In the example below, we preview the ``FeatureStore`` and ``Application`` entities by passing their instances to ``Experiment.preview``:
 
   .. literalinclude:: tutorials/doc_examples/experiment_doc_examples/exp.py
     :language: python
@@ -498,9 +498,9 @@ When executed, the preview logs the following in stdout:
 Starting
 ========
 .. compound::
-  Next launch the components of the ``Experiment`` (``Orchestrator`` and ``Model``).
+  Next launch the components of the ``Experiment`` (``FeatureStore`` and ``Application``).
   To do so, use the ``Experiment.start`` factory method and pass in the previous
-  ``Orchestrator`` and ``Model`` instances.
+  ``FeatureStore`` and ``Application`` instances.
 
   .. literalinclude:: tutorials/doc_examples/experiment_doc_examples/exp.py
     :language: python
@@ -510,7 +510,7 @@ Starting
 Stopping
 ========
 .. compound::
-  Lastly, to clean up the ``Experiment``, tear down the launched ``Orchestrator``
+  Lastly, to clean up the ``Experiment``, tear down the launched ``FeatureStore``
   using the ``Experiment.stop`` factory method.
 
   .. literalinclude:: tutorials/doc_examples/experiment_doc_examples/exp.py
@@ -529,6 +529,6 @@ When you run the experiment, the following output will appear::
   | 1  | orchestrator_0 | DBNode        | 1778304.3+2 | 0       | 43.4797 | Cancelled | 0            |
 
 .. note::
-  Failure to tear down the ``Orchestrator`` at the end of an ``Experiment``
-  may lead to ``Orchestrator`` launch failures if another ``Experiment`` is
+  Failure to tear down the ``FeatureStore`` at the end of an ``Experiment``
+  may lead to ``FeatureStore`` launch failures if another ``Experiment`` is
   started on the same node.

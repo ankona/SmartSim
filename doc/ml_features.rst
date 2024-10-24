@@ -47,7 +47,7 @@ demonstrating how to upload from each. We provide the following examples:
 .. note::
     In all examples, we will assume that a SmartSim ``Orchestator``
     is up and running, and that the code we will show is run as part
-    of a SmartSim-launched application ``Model``.
+    of a SmartSim-launched application ``Application``.
 
 
 .. _ml_features_TF_PT:

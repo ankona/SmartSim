@@ -38,7 +38,7 @@ After installation, specify Dragon as the launcher when creating an ``Experiment
     exp = Experiment(name="dragon-example", launcher="dragon")
 
 Dragon introduces its own run settings class, ``DragonRunSettings``, which allows users to
-specify nodes and tasks per node for a ``Model``. For instance, continuing from the previous
+specify nodes and tasks per node for a ``Application``. For instance, continuing from the previous
 example:
 
 .. code-block:: python
@@ -60,7 +60,7 @@ example:
     # Start the Model
     exp.start(mpi_app)
 
-SmartSim supports ``DragonRunSettings`` with ``Model``, ``Ensemble`` and ``Orchestrator`` entities.
+SmartSim supports ``DragonRunSettings`` with ``Application``, ``Ensemble`` and ``FeatureStore`` entities.
 In the next sections, we detail how Dragon is integrated into SmartSim.
 
 For more information on HPC launchers, visit the :ref:`Run Settings<run_settings_hpc_ex>` page.
@@ -98,7 +98,7 @@ The Dragon Server
 =================
 
 Dragon can initiate processes on any available resource within an allocation. To facilitate
-this, SmartSim initializes the Dragon infrastructure whenever a ``Model`` is launched and maintains
+this, SmartSim initializes the Dragon infrastructure whenever a ``Application`` is launched and maintains
 it until the parent ``Experiment`` concludes. To facilitate interaction with processes managed by
 Dragon, SmartSim establishes a command server within the Dragon infrastructure. This server,
 known as the `Dragon Server`, is responsible for executing commands to start or stop processes

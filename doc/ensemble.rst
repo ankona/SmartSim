@@ -7,16 +7,16 @@ Ensemble
 Overview
 ========
 A SmartSim ``Ensemble`` enables users to run a **group** of computational tasks together in an
-``Experiment`` workflow. An ``Ensemble`` is comprised of multiple ``Model`` objects,
-where each ``Ensemble`` member (SmartSim ``Model``) represents an individual application.
+``Experiment`` workflow. An ``Ensemble`` is comprised of multiple ``Application`` objects,
+where each ``Ensemble`` member (SmartSim ``Application``) represents an individual application.
 An ``Ensemble`` can be managed as a single entity and
 launched with other :ref:`Model's<model_object_doc>` and :ref:`Orchestrators<orch_docs>` to construct AI-enabled workflows.
 
 The :ref:`Ensemble API<ensemble_api>` offers key features, including methods to:
 
 - :ref:`Attach Configuration Files<attach_files_ensemble>` for use at ``Ensemble`` runtime.
-- :ref:`Load AI Models<ai_model_ensemble_doc>` (TF, TF-lite, PT, or ONNX) into the ``Orchestrator`` at ``Ensemble`` runtime.
-- :ref:`Load TorchScripts<TS_ensemble_doc>` into the ``Orchestrator`` at ``Ensemble`` runtime.
+- :ref:`Load AI Models<ai_model_ensemble_doc>` (TF, TF-lite, PT, or ONNX) into the ``FeatureStore`` at ``Ensemble`` runtime.
+- :ref:`Load TorchScripts<TS_ensemble_doc>` into the ``FeatureStore`` at ``Ensemble`` runtime.
 - :ref:`Prevent Data Collisions<prefix_ensemble>` within the ``Ensemble``, which allows for reuse of application code.
 
 To create a SmartSim ``Ensemble``, use the ``Experiment.create_ensemble`` API function. When
@@ -45,8 +45,8 @@ the creation of an ``Ensemble`` to align with one of the following creation stra
 
 1. :ref:`Parameter Expansion<param_expansion_init>`: Generate a variable-sized set of unique simulation instances
    configured with user-defined input parameters.
-2. :ref:`Replica Creation<replicas_init>`: Generate a specified number of ``Model`` replicas.
-3. :ref:`Manually<append_init>`: Attach pre-configured ``Model``'s to an ``Ensemble`` to manage as a single unit.
+2. :ref:`Replica Creation<replicas_init>`: Generate a specified number of ``Application`` replicas.
+3. :ref:`Manually<append_init>`: Attach pre-configured ``Application``'s to an ``Ensemble`` to manage as a single unit.
 
 .. _param_expansion_init:
 
@@ -63,9 +63,9 @@ accepts three values listed below.
 -  `"all_perm"`: Generate all possible parameter permutations for an exhaustive exploration. This
    means that every possible combination of parameters will be used in the ``Ensemble``.
 -  `"step"`: Create parameter sets by collecting identically indexed values across parameter lists.
-   This allows for discrete combinations of parameters for ``Model``'s.
+   This allows for discrete combinations of parameters for ``Application``'s.
 -  `"random"`: Enable random selection from predefined parameter spaces, offering a stochastic approach.
-   This means that the parameters will be chosen randomly for each ``Model``, which can be useful
+   This means that the parameters will be chosen randomly for each ``Application``, which can be useful
    for exploring a wide range of possibilities.
 
 --------
@@ -80,8 +80,8 @@ parameters along with the launch of the ``Ensemble`` as a batch workload.
 
 Example 1 : Parameter Expansion Using `all_perm` Strategy
 
-    In this example an ``Ensemble`` of four ``Model`` entities is created by expanding two parameters
-    using the `all_perm` strategy. All of the ``Model``'s in the ``Ensemble`` share the same ``RunSettings``
+    In this example an ``Ensemble`` of four ``Application`` entities is created by expanding two parameters
+    using the `all_perm` strategy. All of the ``Application``'s in the ``Ensemble`` share the same ``RunSettings``
     and only differ in the value of the `params` assigned to each member. The source code example
     is available in the dropdown below for convenient execution and customization.
 
@@ -125,8 +125,8 @@ Example 1 : Parameter Expansion Using `all_perm` Strategy
 
 Example 2 : Parameter Expansion Using `step` Strategy with the ``Ensemble`` Configured For Batch Launching
 
-    In this example an ``Ensemble`` of two ``Model`` entities is created by expanding two parameters
-    using the `step` strategy. All of the ``Model``'s in the ``Ensemble`` share the same ``RunSettings``
+    In this example an ``Ensemble`` of two ``Application`` entities is created by expanding two parameters
+    using the `step` strategy. All of the ``Application``'s in the ``Ensemble`` share the same ``RunSettings``
     and only differ in the value of the `params` assigned to each member. Lastly, the ``Ensemble`` is
     submitted as a batch workload. The source code example is available in the dropdown below for
     convenient execution and customization.
@@ -179,10 +179,10 @@ Example 2 : Parameter Expansion Using `step` Strategy with the ``Ensemble`` Conf
 
 Replicas
 ========
-A replica strategy involves the creation of identical ``Model``'s within an ``Ensemble``.
+A replica strategy involves the creation of identical ``Application``'s within an ``Ensemble``.
 This strategy is particularly useful for applications that have some inherent randomness.
 Users may use the `replicas` factory method argument to create a specified number of identical
-``Model`` members during ``Ensemble`` creation (``Experiment.create_ensemble``).
+``Application`` members during ``Ensemble`` creation (``Experiment.create_ensemble``).
 
 --------
 Examples
@@ -196,9 +196,9 @@ member clones along with the launch of the ``Ensemble`` as a batch workload.
 
 Example 1 : ``Ensemble`` creation with replicas strategy
 
-    In this example an ``Ensemble`` of four identical ``Model`` members is created by
+    In this example an ``Ensemble`` of four identical ``Application`` members is created by
     specifying the number of clones to create via the `replicas` argument.
-    All of the ``Model``'s in the ``Ensemble`` share the same ``RunSettings``.
+    All of the ``Application``'s in the ``Ensemble`` share the same ``RunSettings``.
     The source code example is available in the dropdown below for convenient execution
     and customization.
 
@@ -206,7 +206,7 @@ Example 1 : ``Ensemble`` creation with replicas strategy
 
         .. literalinclude:: tutorials/doc_examples/ensemble_doc_examples/replicas_1.py
 
-    To create an ``Ensemble`` of identical ``Model``'s, begin by initializing a ``RunSettings``
+    To create an ``Ensemble`` of identical ``Application``'s, begin by initializing a ``RunSettings``
     object:
 
     .. literalinclude:: tutorials/doc_examples/ensemble_doc_examples/replicas_1.py
@@ -227,8 +227,8 @@ Example 1 : ``Ensemble`` creation with replicas strategy
 
 Example 2 : ``Ensemble`` Creation with Replicas Strategy and ``Ensemble`` Batch Launching
 
-    In this example an ``Ensemble`` of four ``Model`` entities is created by specifying
-    the number of clones to create via the `replicas` argument. All of the ``Model``'s in
+    In this example an ``Ensemble`` of four ``Application`` entities is created by specifying
+    the number of clones to create via the `replicas` argument. All of the ``Application``'s in
     the ``Ensemble`` share the same ``RunSettings`` and the ``Ensemble`` is
     submitted as a batch workload. The source code example is available in the dropdown below for
     convenient execution and customization.
@@ -237,7 +237,7 @@ Example 2 : ``Ensemble`` Creation with Replicas Strategy and ``Ensemble`` Batch 
 
         .. literalinclude:: tutorials/doc_examples/ensemble_doc_examples/replicas_2.py
 
-    To launch the ``Ensemble`` of identical ``Model``'s as a batch job, begin by initializing a ``BatchSettings``
+    To launch the ``Ensemble`` of identical ``Application``'s as a batch job, begin by initializing a ``BatchSettings``
     object:
 
     .. literalinclude:: tutorials/doc_examples/ensemble_doc_examples/replicas_2.py
@@ -248,7 +248,7 @@ Example 2 : ``Ensemble`` Creation with Replicas Strategy and ``Ensemble`` Batch 
     The above ``BatchSettings`` object will instruct SmartSim to run the ``Ensemble`` on four
     nodes with a timeout of `10 hours`.
 
-    Next, create a ``RunSettings`` object to apply to all ``Model`` replicas:
+    Next, create a ``RunSettings`` object to apply to all ``Application`` replicas:
 
     .. literalinclude:: tutorials/doc_examples/ensemble_doc_examples/replicas_2.py
         :language: python
@@ -269,29 +269,29 @@ Example 2 : ``Ensemble`` Creation with Replicas Strategy and ``Ensemble`` Batch 
 
 Manually Append
 ===============
-Manually appending ``Model``'s to an ``Ensemble`` offers an in-depth level of customization in ``Ensemble`` design.
-This approach is favorable when users have distinct requirements for individual ``Model``'s, such as variations
+Manually appending ``Application``'s to an ``Ensemble`` offers an in-depth level of customization in ``Ensemble`` design.
+This approach is favorable when users have distinct requirements for individual ``Application``'s, such as variations
 in parameters, run settings, or different types of simulations.
 
 --------
 Examples
 --------
-This subsection contains an example of creating an ``Ensemble`` by manually appending ``Model``'s.
-The example illustrates attaching two SmartSim ``Model``'s to the ``Ensemble``.
+This subsection contains an example of creating an ``Ensemble`` by manually appending ``Application``'s.
+The example illustrates attaching two SmartSim ``Application``'s to the ``Ensemble``.
 The ``Ensemble`` is submitted as a batch workload.
 
-Example 1 : Append ``Model``'s to an ``Ensemble`` and Launch as a Batch Job
+Example 1 : Append ``Application``'s to an ``Ensemble`` and Launch as a Batch Job
 
-    In this example, we append ``Model``'s to an ``Ensemble`` for batch job execution. To do
+    In this example, we append ``Application``'s to an ``Ensemble`` for batch job execution. To do
     this, we first initialize an Ensemble with a ``BatchSettings`` object. Then, manually
-    create ``Model``'s and add each to the ``Ensemble`` using the ``Ensemble.add_model`` function.
+    create ``Application``'s and add each to the ``Ensemble`` using the ``Ensemble.add_model`` function.
     The source code example is available in the dropdown below for convenient execution and customization.
 
     .. dropdown:: Example Driver Script Source Code
 
         .. literalinclude:: tutorials/doc_examples/ensemble_doc_examples/manual_append_ensemble.py
 
-    To create an empty ``Ensemble`` to append ``Model``'s, initialize the ``Ensemble`` with
+    To create an empty ``Ensemble`` to append ``Application``'s, initialize the ``Ensemble`` with
     a batch settings object:
 
     .. literalinclude:: tutorials/doc_examples/ensemble_doc_examples/manual_append_ensemble.py
@@ -299,21 +299,21 @@ Example 1 : Append ``Model``'s to an ``Ensemble`` and Launch as a Batch Job
         :linenos:
         :lines: 6-11
 
-    Next, create the ``Model``'s to append to the ``Ensemble``:
+    Next, create the ``Application``'s to append to the ``Ensemble``:
 
     .. literalinclude:: tutorials/doc_examples/ensemble_doc_examples/manual_append_ensemble.py
         :language: python
         :linenos:
         :lines: 13-20
 
-    Finally, append the ``Model`` objects to the ``Ensemble``:
+    Finally, append the ``Application`` objects to the ``Ensemble``:
 
     .. literalinclude:: tutorials/doc_examples/ensemble_doc_examples/manual_append_ensemble.py
         :language: python
         :linenos:
         :lines: 22-25
 
-    The new ``Ensemble`` is comprised of two appended ``Model`` members.
+    The new ``Ensemble`` is comprised of two appended ``Application`` members.
 
 .. _attach_files_ensemble:
 
@@ -354,8 +354,8 @@ In the :ref:`Example<files_example_doc_ensem>` subsection, we provide an example
 within ``Ensemble.attach_generator_files``.
 
 .. seealso::
-    To add a file to a single ``Model`` that will be appended to an ``Ensemble``, refer to the :ref:`Files<files_doc>`
-    section of the ``Model`` documentation.
+    To add a file to a single ``Application`` that will be appended to an ``Ensemble``, refer to the :ref:`Files<files_doc>`
+    section of the ``Application`` documentation.
 
 .. _files_example_doc_ensem:
 
@@ -450,30 +450,30 @@ ML Models and Scripts
 =====================
 Overview
 ========
-SmartSim users have the capability to load ML models and TorchScripts into an ``Orchestrator``
+SmartSim users have the capability to load ML models and TorchScripts into an ``FeatureStore``
 within the ``Experiment`` script for use within ``Ensemble`` members. Functions
 accessible through an ``Ensemble`` object support loading ML models (TensorFlow, TensorFlow-lite,
 PyTorch, and ONNX) and TorchScripts into standalone or colocated ``Orchestrators`` before
 application runtime.
 
 .. seealso::
-    To add an ML model or TorchScript to a single ``Model`` that will be appended to an
+    To add an ML model or TorchScript to a single ``Application`` that will be appended to an
     ``Ensemble``, refer to the :ref:`ML Models and Scripts<ml_script_model_doc>`
-    section of the ``Model`` documentation.
+    section of the ``Application`` documentation.
 
 Depending on the planned storage method of the **ML model**, there are **two** distinct
-approaches to load it into the ``Orchestrator``:
+approaches to load it into the ``FeatureStore``:
 
 - :ref:`From Memory<in_mem_ML_model_ensemble_ex>`
 - :ref:`From File<from_file_ML_model_ensemble_ex>`
 
 .. warning::
     Uploading an ML model :ref:`from memory<in_mem_ML_model_ensemble_ex>` is solely supported for
-    standalone ``Orchestrators``. To upload an ML model to a colocated ``Orchestrator``, users
+    standalone ``Orchestrators``. To upload an ML model to a colocated ``FeatureStore``, users
     must save the ML model to disk and upload :ref:`from file<from_file_ML_model_ensemble_ex>`.
 
 Depending on the planned storage method of the **TorchScript**, there are **three** distinct
-approaches to load it into the ``Orchestrator``:
+approaches to load it into the ``FeatureStore``:
 
 - :ref:`From Memory<in_mem_TF_ensemble_doc>`
 - :ref:`From File<TS_from_file_ensemble>`
@@ -481,10 +481,10 @@ approaches to load it into the ``Orchestrator``:
 
 .. warning::
     Uploading a TorchScript :ref:`from memory<in_mem_TF_ensemble_doc>` is solely supported for
-    standalone ``Orchestrators``. To upload a TorchScript to a colocated ``Orchestrator``, users
+    standalone ``Orchestrators``. To upload a TorchScript to a colocated ``FeatureStore``, users
     upload :ref:`from file<TS_from_file_ensemble>` or :ref:`from string<TS_raw_string_ensemble>`.
 
-Once a ML model or TorchScript is loaded into the ``Orchestrator``, ``Ensemble`` members can
+Once a ML model or TorchScript is loaded into the ``FeatureStore``, ``Ensemble`` members can
 leverage ML capabilities by utilizing the SmartSim client (:ref:`SmartRedis<smartredis-api>`)
 to execute the stored ML models or TorchScripts.
 
@@ -493,13 +493,13 @@ to execute the stored ML models or TorchScripts.
 AI Models
 =========
 When configuring an ``Ensemble``, users can instruct SmartSim to load
-Machine Learning (ML) models dynamically to the ``Orchestrator`` (colocated or standalone). ML models added
-are loaded into the ``Orchestrator`` prior to the execution of the ``Ensemble``. To load an ML model
-to the ``Orchestrator``, SmartSim users can serialize and provide the ML model **in-memory** or specify the **file path**
+Machine Learning (ML) models dynamically to the ``FeatureStore`` (colocated or standalone). ML models added
+are loaded into the ``FeatureStore`` prior to the execution of the ``Ensemble``. To load an ML model
+to the ``FeatureStore``, SmartSim users can serialize and provide the ML model **in-memory** or specify the **file path**
 via the ``Ensemble.add_ml_model`` function. The supported ML frameworks are TensorFlow,
 TensorFlow-lite, PyTorch, and ONNX.
 
-Users must **serialize TensorFlow ML models** before sending to an ``Orchestrator`` from memory
+Users must **serialize TensorFlow ML models** before sending to an ``FeatureStore`` from memory
 or from file. To save a TensorFlow model to memory, SmartSim offers the ``serialize_model``
 function. This function returns the TF model as a byte string with the names of the
 input and output layers, which will be required upon uploading. To save a TF model to disk,
@@ -513,7 +513,7 @@ information and examples can be found in the :ref:`ML Features<ml_features_docs>
 When attaching an ML model using ``Ensemble.add_ml_model``, the
 following arguments are offered to customize storage and execution:
 
-- `name` (str): name to reference the ML model in the ``Orchestrator``.
+- `name` (str): name to reference the ML model in the ``FeatureStore``.
 - `backend` (str): name of the backend (TORCH, TF, TFLITE, ONNX).
 - `model` (t.Optional[str] = None): An ML model in memory (only supported for non-colocated ``Orchestrators``).
 - `model_path` (t.Optional[str] = None): serialized ML model.
@@ -528,9 +528,9 @@ following arguments are offered to customize storage and execution:
 - `outputs` (t.Optional[t.List[str]] = None): ML model outputs (TF only), defaults to None.
 
 .. seealso::
-    To add an ML model to a single ``Model`` that will be appended to an
+    To add an ML model to a single ``Application`` that will be appended to an
     ``Ensemble``, refer to the :ref:`AI Models<ai_model_doc>`
-    section of the ``Model`` documentation.
+    section of the ``Application`` documentation.
 
 .. _in_mem_ML_model_ensemble_ex:
 
@@ -538,7 +538,7 @@ following arguments are offered to customize storage and execution:
 Example: Attach an In-Memory ML Model
 -------------------------------------
 This example demonstrates how to attach an in-memory ML model to a SmartSim ``Ensemble``
-to load into an ``Orchestrator`` at ``Ensemble`` runtime. The source code example is
+to load into an ``FeatureStore`` at ``Ensemble`` runtime. The source code example is
 available in the dropdown below for convenient execution and customization.
 
 .. dropdown:: Experiment Driver Script Source Code
@@ -548,7 +548,7 @@ available in the dropdown below for convenient execution and customization.
 .. note::
     This example assumes:
 
-    - an ``Orchestrator`` is launched prior to the ``Ensemble`` execution
+    - an ``FeatureStore`` is launched prior to the ``Ensemble`` execution
     - an initialized ``Ensemble`` named `ensemble_instance` exists within the ``Experiment`` workflow
     - a Tensorflow-based ML model was serialized using ``serialize_model`` which returns the
       ML model as a byte string with the names of the input and output layers
@@ -567,7 +567,7 @@ Additionally, the ``serialize_model`` function returned the names of the input a
 
 In the above ``ensemble_instance.add_ml_model`` code snippet, we offer the following arguments:
 
--  `name` ("cnn"): A name to reference the ML model in the ``Orchestrator``.
+-  `name` ("cnn"): A name to reference the ML model in the ``FeatureStore``.
 -  `backend` ("TF"): Indicating that the ML model is a TensorFlow model.
 -  `model` (model): The in-memory representation of the TensorFlow model.
 -  `device` ("GPU"): Specifying the device for ML model execution.
@@ -577,11 +577,11 @@ In the above ``ensemble_instance.add_ml_model`` code snippet, we offer the follo
 -  `outputs` (outputs): The name of the ML model output nodes (TensorFlow only).
 
 .. warning::
-    Calling `exp.start(ensemble_instance)` prior to the launch of an ``Orchestrator`` will result in
-    a failed attempt to load the ML model to a non-existent standalone ``Orchestrator``.
+    Calling `exp.start(ensemble_instance)` prior to the launch of an ``FeatureStore`` will result in
+    a failed attempt to load the ML model to a non-existent standalone ``FeatureStore``.
 
 When the ``Ensemble`` is started via ``Experiment.start``, the ML model will be loaded to the
-launched standalone ``Orchestrator``. The ML model can then be executed on the ``Orchestrator`` via a SmartSim
+launched standalone ``FeatureStore``. The ML model can then be executed on the ``FeatureStore`` via a SmartSim
 client (:ref:`SmartRedis<smartredis-api>`) within the application code.
 
 .. _from_file_ML_model_ensemble_ex:
@@ -590,7 +590,7 @@ client (:ref:`SmartRedis<smartredis-api>`) within the application code.
 Example: Attach an ML Model From File
 -------------------------------------
 This example demonstrates how to attach a ML model from file to a SmartSim ``Ensemble``
-to load into an ``Orchestrator`` at ``Ensemble`` runtime. The source code example is
+to load into an ``FeatureStore`` at ``Ensemble`` runtime. The source code example is
 available in the dropdown below for convenient execution and customization.
 
 .. dropdown:: Experiment Driver Script Source Code
@@ -600,7 +600,7 @@ available in the dropdown below for convenient execution and customization.
 .. note::
     This example assumes:
 
-    - a standalone ``Orchestrator`` is launched prior to ``Ensemble`` execution
+    - a standalone ``FeatureStore`` is launched prior to ``Ensemble`` execution
     - an initialized ``Ensemble`` named `ensemble_instance` exists within the ``Experiment`` workflow
     - a Tensorflow-based ML model was serialized using ``freeze_model`` which returns the
       the path to the serialized model file and the names of the input and output layers
@@ -619,7 +619,7 @@ the ``Ensemble.add_ml_model`` function and specify the ML model path to the para
 
 In the above ``ensemble_instance.add_ml_model`` code snippet, we offer the following arguments:
 
--  `name` ("cnn"): A name to reference the ML model in the ``Orchestrator``.
+-  `name` ("cnn"): A name to reference the ML model in the ``FeatureStore``.
 -  `backend` ("TF"): Indicating that the ML model is a TensorFlow model.
 -  `model_path` (model_file): The path to the ML model script.
 -  `device` ("GPU"): Specifying the device for ML model execution.
@@ -629,11 +629,11 @@ In the above ``ensemble_instance.add_ml_model`` code snippet, we offer the follo
 -  `outputs` (outputs): The name of the ML model output nodes (TensorFlow only).
 
 .. warning::
-    Calling `exp.start(ensemble_instance)` prior to instantiation of an ``Orchestrator`` will result in
-    a failed attempt to load the ML model to a non-existent ``Orchestrator``.
+    Calling `exp.start(ensemble_instance)` prior to instantiation of an ``FeatureStore`` will result in
+    a failed attempt to load the ML model to a non-existent ``FeatureStore``.
 
 When the ``Ensemble`` is started via ``Experiment.start``, the ML model will be loaded to the
-launched ``Orchestrator``. The ML model can then be executed on the ``Orchestrator`` via a SmartSim
+launched ``FeatureStore``. The ML model can then be executed on the ``FeatureStore`` via a SmartSim
 client (:ref:`SmartRedis<smartredis-api>`) within the application executable.
 
 .. _TS_ensemble_doc:
@@ -641,18 +641,18 @@ client (:ref:`SmartRedis<smartredis-api>`) within the application executable.
 TorchScripts
 ============
 When configuring an ``Ensemble``, users can instruct SmartSim to load TorchScripts dynamically
-to the ``Orchestrator``. The TorchScripts become available for each ``Ensemble`` member upon being loaded
-into the ``Orchestrator`` prior to the execution of the ``Ensemble``. SmartSim users may upload
+to the ``FeatureStore``. The TorchScripts become available for each ``Ensemble`` member upon being loaded
+into the ``FeatureStore`` prior to the execution of the ``Ensemble``. SmartSim users may upload
 a single TorchScript function via ``Ensemble.add_function`` or alternatively upload a script
 containing multiple functions via ``Ensemble.add_script``. To load a TorchScript to the
-``Orchestrator``, SmartSim users can follow one of the following processes:
+``FeatureStore``, SmartSim users can follow one of the following processes:
 
 - :ref:`Define a TorchScript Function In-Memory<in_mem_TF_doc>`
-   Use the ``Ensemble.add_function`` to instruct SmartSim to load an in-memory TorchScript to the ``Orchestrator``.
+   Use the ``Ensemble.add_function`` to instruct SmartSim to load an in-memory TorchScript to the ``FeatureStore``.
 - :ref:`Define Multiple TorchScript Functions From File<TS_from_file>`
-   Provide file path to ``Ensemble.add_script`` to instruct SmartSim to load the TorchScript from file to the ``Orchestrator``.
+   Provide file path to ``Ensemble.add_script`` to instruct SmartSim to load the TorchScript from file to the ``FeatureStore``.
 - :ref:`Define a TorchScript Function as String<TS_raw_string>`
-   Provide function string to ``Ensemble.add_script`` to instruct SmartSim to load a raw string as a TorchScript function to the ``Orchestrator``.
+   Provide function string to ``Ensemble.add_script`` to instruct SmartSim to load a raw string as a TorchScript function to the ``FeatureStore``.
 
 .. note::
     Uploading a TorchScript :ref:`from memory<in_mem_TF_doc>` using ``Ensemble.add_function``
@@ -666,19 +666,19 @@ In environments with multiple devices, specific device numbers can be specified 
 
 .. note::
     If `device=GPU` is specified when attaching a TorchScript function to an ``Ensemble``, this instructs
-    SmartSim to execute the TorchScript on GPU nodes. However, TorchScripts loaded to an ``Orchestrator`` are
-    executed on the ``Orchestrator`` compute resources. Therefore, users must make sure that the device
-    specified is included in the ``Orchestrator`` compute resources. To further explain, if a user
-    specifies `device=GPU`, however, initializes ``Orchestrator`` on only CPU nodes,
+    SmartSim to execute the TorchScript on GPU nodes. However, TorchScripts loaded to an ``FeatureStore`` are
+    executed on the ``FeatureStore`` compute resources. Therefore, users must make sure that the device
+    specified is included in the ``FeatureStore`` compute resources. To further explain, if a user
+    specifies `device=GPU`, however, initializes ``FeatureStore`` on only CPU nodes,
     the TorchScript will not run on GPU nodes as advised.
 
 Continue or select the respective process link to learn more on how each function (``Ensemble.add_script`` and ``Ensemble.add_function``)
-dynamically loads TorchScripts to the ``Orchestrator``.
+dynamically loads TorchScripts to the ``FeatureStore``.
 
 .. seealso::
-    To add a TorchScript to a single ``Model`` that will be appended to an
+    To add a TorchScript to a single ``Application`` that will be appended to an
     ``Ensemble``, refer to the :ref:`TorchScripts<TS_doc>`
-    section of the ``Model`` documentation.
+    section of the ``Application`` documentation.
 
 .. _in_mem_TF_ensemble_doc:
 
@@ -689,14 +689,14 @@ Users can define TorchScript functions within the ``Experiment`` driver script
 to attach to an ``Ensemble``. This feature is supported by ``Ensemble.add_function``.
 
 .. warning::
-    ``Ensemble.add_function`` does **not** support loading in-memory TorchScript functions to a colocated ``Orchestrator``.
-    If you would like to load a TorchScript function to a colocated ``Orchestrator``, define the function
+    ``Ensemble.add_function`` does **not** support loading in-memory TorchScript functions to a colocated ``FeatureStore``.
+    If you would like to load a TorchScript function to a colocated ``FeatureStore``, define the function
     as a :ref:`raw string<TS_raw_string_ensemble>` or :ref:`load from file<TS_from_file_ensemble>`.
 
 When specifying an in-memory TF function using ``Ensemble.add_function``, the
 following arguments are offered:
 
-- `name` (str): reference name for the script inside of the ``Orchestrator``.
+- `name` (str): reference name for the script inside of the ``FeatureStore``.
 - `function` (t.Optional[str] = None): TorchScript function code.
 - `device` (t.Literal["CPU", "GPU"] = "CPU"): device for script execution, defaults to “CPU”.
 - `devices_per_node` (int = 1): The number of GPU devices available on the host. This parameter only applies to GPU devices and will be ignored if device is specified as CPU.
@@ -707,7 +707,7 @@ following arguments are offered:
 Example: Load a In-Memory TorchScript Function
 ----------------------------------------------
 This example walks through the steps of instructing SmartSim to load an in-memory TorchScript function
-to a standalone ``Orchestrator``. The source code example is available in the dropdown below for
+to a standalone ``FeatureStore``. The source code example is available in the dropdown below for
 convenient execution and customization.
 
 .. dropdown:: Experiment Driver Script Source Code
@@ -717,7 +717,7 @@ convenient execution and customization.
 .. note::
     The example assumes:
 
-    - a standalone ``Orchestrator`` is launched prior to ``Ensemble`` execution
+    - a standalone ``FeatureStore`` is launched prior to ``Ensemble`` execution
     - an initialized ``Ensemble`` named `ensemble_instance` exists within the ``Experiment`` workflow
 
 **Define an In-Memory TF Function**
@@ -733,7 +733,7 @@ For the purpose of the example, we add a simple TorchScript function, `timestwo`
 **Attach the In-Memory TorchScript Function to a SmartSim Ensemble**
 
 We use the ``Ensemble.add_function`` function to instruct SmartSim to load the TorchScript function `timestwo`
-onto the launched standalone ``Orchestrator``. Specify the function `timestwo` to the `function`
+onto the launched standalone ``FeatureStore``. Specify the function `timestwo` to the `function`
 parameter:
 
 .. literalinclude:: tutorials/doc_examples/ensemble_doc_examples/ensemble_torchscript_mem.py
@@ -743,18 +743,18 @@ parameter:
 
 In the above ``ensemble_instance.add_function`` code snippet, we offer the following arguments:
 
--  `name` ("example_func"): A name to uniquely identify the TorchScript within the ``Orchestrator``.
+-  `name` ("example_func"): A name to uniquely identify the TorchScript within the ``FeatureStore``.
 -  `function` (timestwo): Name of the TorchScript function defined in the Python driver script.
 -  `device` ("GPU"): Specifying the device for TorchScript execution.
 -  `devices_per_node` (2): Use two GPUs per node.
 -  `first_device` (0): Start with 0 index GPU.
 
 .. warning::
-    Calling `exp.start(ensemble_instance)` prior to instantiation of an ``Orchestrator`` will result in
-    a failed attempt to load the TorchScript to a non-existent ``Orchestrator``.
+    Calling `exp.start(ensemble_instance)` prior to instantiation of an ``FeatureStore`` will result in
+    a failed attempt to load the TorchScript to a non-existent ``FeatureStore``.
 
 When the ``Ensemble`` is started via ``Experiment.start``, the TF function will be loaded to the
-standalone ``Orchestrator``. The function can then be executed on the ``Orchestrator`` via a SmartSim
+standalone ``FeatureStore``. The function can then be executed on the ``FeatureStore`` via a SmartSim
 client (:ref:`SmartRedis<smartredis-api>`) within the application code.
 
 .. _TS_from_file_ensemble:
@@ -763,13 +763,13 @@ client (:ref:`SmartRedis<smartredis-api>`) within the application code.
 Attach a TorchScript From File
 ------------------------------
 Users can attach TorchScript functions from a file to an ``Ensemble`` and upload them to a
-colocated or standalone ``Orchestrator``. This functionality is supported by the ``Ensemble.add_script``
+colocated or standalone ``FeatureStore``. This functionality is supported by the ``Ensemble.add_script``
 function's `script_path` parameter.
 
 When specifying a TorchScript using ``Ensemble.add_script``, the
 following arguments are offered:
 
-- `name` (str): Reference name for the script inside of the ``Orchestrator``.
+- `name` (str): Reference name for the script inside of the ``FeatureStore``.
 - `script` (t.Optional[str] = None): TorchScript code (only supported for non-colocated ``Orchestrators``).
 - `script_path` (t.Optional[str] = None): path to TorchScript code.
 - `device` (t.Literal["CPU", "GPU"] = "CPU"): device for script execution, defaults to “CPU”.
@@ -779,7 +779,7 @@ following arguments are offered:
 Example: Loading a TorchScript From File
 ----------------------------------------
 This example walks through the steps of instructing SmartSim to load a TorchScript from file
-to an ``Orchestrator``. The source code example is available in the dropdown below for
+to an ``FeatureStore``. The source code example is available in the dropdown below for
 convenient execution and customization.
 
 .. dropdown:: Experiment Driver Script Source Code
@@ -789,7 +789,7 @@ convenient execution and customization.
 .. note::
     This example assumes:
 
-    - an ``Orchestrator`` is launched prior to ``Ensemble`` execution
+    - an ``FeatureStore`` is launched prior to ``Ensemble`` execution
     - an initialized ``Ensemble`` named `ensemble_instance` exists within the ``Experiment`` workflow
 
 **Define a TorchScript Script**
@@ -820,18 +820,18 @@ the ``Ensemble.add_script`` function and specify the script path to the paramete
 
 In the above ``smartsim_model.add_script`` code snippet, we offer the following arguments:
 
--  `name` ("example_script"): Reference name for the script inside of the ``Orchestrator``.
+-  `name` ("example_script"): Reference name for the script inside of the ``FeatureStore``.
 -  `script_path` ("path/to/torchscript.py"): Path to the script file.
 -  `device` ("GPU"): device for script execution.
 -  `devices_per_node` (2): Use two GPUs per node.
 -  `first_device` (0): Start with 0 index GPU.
 
 .. warning::
-    Calling `exp.start(ensemble_instance)` prior to instantiation of an ``Orchestrator`` will result in
-    a failed attempt to load the ML model to a non-existent ``Orchestrator``.
+    Calling `exp.start(ensemble_instance)` prior to instantiation of an ``FeatureStore`` will result in
+    a failed attempt to load the ML model to a non-existent ``FeatureStore``.
 
 When `ensemble_instance` is started via ``Experiment.start``, the TorchScript will be loaded from file to the
-``Orchestrator`` that is launched prior to the start of `ensemble_instance`.
+``FeatureStore`` that is launched prior to the start of `ensemble_instance`.
 
 .. _TS_raw_string_ensemble:
 
@@ -839,13 +839,13 @@ When `ensemble_instance` is started via ``Experiment.start``, the TorchScript wi
 Define TorchScripts as Raw String
 ---------------------------------
 Users can upload TorchScript functions from string to send to a colocated or
-standalone ``Orchestrator``. This feature is supported by the
+standalone ``FeatureStore``. This feature is supported by the
 ``Ensemble.add_script`` function's `script` parameter.
 
 When specifying a TorchScript using ``Ensemble.add_script``, the
 following arguments are offered:
 
-- `name` (str): Reference name for the script inside of the ``Orchestrator``.
+- `name` (str): Reference name for the script inside of the ``FeatureStore``.
 - `script` (t.Optional[str] = None): String of function code (e.g. TorchScript code string).
 - `script_path` (t.Optional[str] = None): path to TorchScript code.
 - `device` (t.Literal["CPU", "GPU"] = "CPU"): device for script execution, defaults to “CPU”.
@@ -855,7 +855,7 @@ following arguments are offered:
 Example: Load a TorchScript From String
 ---------------------------------------
 This example walks through the steps of instructing SmartSim to load a TorchScript function
-from string to an ``Orchestrator`` before the execution of the associated ``Ensemble``.
+from string to an ``FeatureStore`` before the execution of the associated ``Ensemble``.
 The source code example is available in the dropdown below for convenient execution and customization.
 
 .. dropdown:: Experiment Driver Script Source Code
@@ -865,7 +865,7 @@ The source code example is available in the dropdown below for convenient execut
 .. note::
     This example assumes:
 
-    - an ``Orchestrator`` is launched prior to ``Ensemble`` execution
+    - an ``FeatureStore`` is launched prior to ``Ensemble`` execution
     - an initialized ``Ensemble`` named `ensemble_instance` exists within the ``Experiment`` workflow
 
 **Define a String TorchScript**
@@ -897,11 +897,11 @@ In the above ``ensemble_instance.add_script`` code snippet, we offer the followi
 -  `first_device` (0): Start with 0 index GPU.
 
 .. warning::
-    Calling `exp.start(ensemble_instance)` prior to instantiation of an ``Orchestrator`` will result in
-    a failed attempt to load the ML model to a non-existent ``Orchestrator``.
+    Calling `exp.start(ensemble_instance)` prior to instantiation of an ``FeatureStore`` will result in
+    a failed attempt to load the ML model to a non-existent ``FeatureStore``.
 
 When the ``Ensemble`` is started via ``Experiment.start``, the TorchScript will be loaded to the
-``Orchestrator`` that is launched prior to the start of the ``Ensemble``.
+``FeatureStore`` that is launched prior to the start of the ``Ensemble``.
 
 .. _prefix_ensemble:
 
@@ -911,34 +911,34 @@ Data Collision Prevention
 Overview
 ========
 When multiple ``Ensemble`` members use the same code to send and access their respective data
-in the ``Orchestrator``, key overlapping can occur, leading to inadvertent data access
+in the ``FeatureStore``, key overlapping can occur, leading to inadvertent data access
 between ``Ensemble`` members. To address this, SmartSim supports key prefixing
 through ``Ensemble.enable_key_prefixing`` which enables key prefixing for all
 ``Ensemble`` members. For example, during an ``Ensemble`` simulation with prefixing enabled, SmartSim will add
-the ``Ensemble`` member `name` as a prefix to the keys sent to the ``Orchestrator``.
+the ``Ensemble`` member `name` as a prefix to the keys sent to the ``FeatureStore``.
 Enabling key prefixing eliminates issues related to key overlapping, allowing ``Ensemble``
 members to use the same code without issue.
 
 The key components of SmartSim ``Ensemble`` prefixing functionality include:
 
-1. **Sending Data to the Orchestrator**: Users can send data to an ``Orchestrator``
+1. **Sending Data to the Orchestrator**: Users can send data to an ``FeatureStore``
    with the ``Ensemble`` member name prepended to the data name by utilizing SmartSim :ref:`Ensemble functions<model_prefix_func_ensemble>`.
 2. **Retrieving Data From the Orchestrator**: Users can instruct a ``Client`` to prepend a
-   ``Ensemble`` member name to a key during data retrieval, polling, or check for existence on the ``Orchestrator``
+   ``Ensemble`` member name to a key during data retrieval, polling, or check for existence on the ``FeatureStore``
    through SmartRedis :ref:`Client functions<client_prefix_func>`. However, entity interaction
    must be registered using :ref:`Ensemble<model_prefix_func_ensemble>` or :ref:`Model<model_prefix_func>` functions.
 
 .. seealso::
-    For information on prefixing ``Client`` functions, visit the :ref:`Client functions<client_prefix_func>` page of the ``Model``
+    For information on prefixing ``Client`` functions, visit the :ref:`Client functions<client_prefix_func>` page of the ``Application``
     documentation.
 
 For example, assume you have an ``Ensemble`` that was initialized using the :ref:`replicas<replicas_init>` creation strategy.
-Two identical ``Model`` were created named `ensemble_0` and `ensemble_1` that use the same executable application
+Two identical ``Application`` were created named `ensemble_0` and `ensemble_1` that use the same executable application
 within an ``Ensemble`` named `ensemble`. In the application code you use the function ``Client.put_tensor("tensor_0", data)``.
 Without key prefixing enabled, the slower member will overwrite the data from the faster simulation.
 With ``Ensemble`` key prefixing turned on, `ensemble_0` and `ensemble_1` can access
-their tensor `"tensor_0"` by name without overwriting or accessing the other ``Model``'s `"tensor_0"` tensor.
-In this scenario, the two tensors placed in the ``Orchestrator`` are named `ensemble_0.tensor_0` and `ensemble_1.tensor_0`.
+their tensor `"tensor_0"` by name without overwriting or accessing the other ``Application``'s `"tensor_0"` tensor.
+In this scenario, the two tensors placed in the ``FeatureStore`` are named `ensemble_0.tensor_0` and `ensemble_1.tensor_0`.
 
 .. _model_prefix_func_ensemble:
 
@@ -951,7 +951,7 @@ An ``Ensemble`` object supports two prefixing functions: ``Ensemble.enable_key_p
 
 To enable prefixing on a ``Ensemble``, users must use the ``Ensemble.enable_key_prefixing``
 function in the ``Experiment`` driver script. This function activates prefixing for tensors,
-``Datasets``, and lists sent to an ``Orchestrator`` for all ``Ensemble`` members. This function
+``Datasets``, and lists sent to an ``FeatureStore`` for all ``Ensemble`` members. This function
 also enables access to prefixing ``Client`` functions within the ``Ensemble`` members. This excludes
 the ``Client.set_data_source`` function, where ``enable_key_prefixing`` is not require for access.
 
@@ -965,7 +965,7 @@ using the ``Client.set_data_source``. However, for SmartSim to recognize the pro
 passed to the function within an application, the producer entity must be registered on the consumer
 entity using ``Ensemble.register_incoming_entity``.
 
-If a consumer ``Ensemble`` member requests data sent to the ``Orchestrator`` by other ``Ensemble`` members, the producer members must be
+If a consumer ``Ensemble`` member requests data sent to the ``FeatureStore`` by other ``Ensemble`` members, the producer members must be
 registered on consumer member. To access ``Ensemble`` members, SmartSim offers the attribute ``Ensemble.models`` that returns
 a list of ``Ensemble`` members. Below we demonstrate registering producer members on a consumer member:
 
@@ -981,25 +981,25 @@ a list of ``Ensemble`` members. Below we demonstrate registering producer member
         ensemble_member.register_incoming_entity(ensemble.models.get(name))
 
 For examples demonstrating how to retrieve data within the entity application that produced
-the data, visit the ``Model`` :ref:`Copy/Rename/Delete Operations<copy_rename_del_prefix>` subsection.
+the data, visit the ``Application`` :ref:`Copy/Rename/Delete Operations<copy_rename_del_prefix>` subsection.
 
 Example: Ensemble Key Prefixing
 ===============================
-In this example, we create an ``Ensemble`` comprised of two ``Model``'s that use identical code
-to send data to a standalone ``Orchestrator``. To prevent key collisions and ensure data
+In this example, we create an ``Ensemble`` comprised of two ``Application``'s that use identical code
+to send data to a standalone ``FeatureStore``. To prevent key collisions and ensure data
 integrity, we enable key prefixing on the ``Ensemble`` which automatically
-appends the ``Ensemble`` member `name` to the data sent to the ``Orchestrator``. After the
-``Ensemble`` completes, we launch a consumer ``Model`` within the ``Experiment`` driver script
-to demonstrate accessing prefixed data sent to the ``Orchestrator`` by ``Ensemble`` members.
+appends the ``Ensemble`` member `name` to the data sent to the ``FeatureStore``. After the
+``Ensemble`` completes, we launch a consumer ``Application`` within the ``Experiment`` driver script
+to demonstrate accessing prefixed data sent to the ``FeatureStore`` by ``Ensemble`` members.
 
 This example consists of **three** Python scripts:
 
 1. :ref:`Application Producer Script<app_prod_prefix_ensemble>`: This script is encapsulated
    in a SmartSim ``Ensemble`` within the ``Experiment`` driver script. Prefixing is enabled
-   on the ``Ensemble``. The producer script puts NumPy tensors on an ``Orchestrator``
+   on the ``Ensemble``. The producer script puts NumPy tensors on an ``FeatureStore``
    launched in the ``Experiment`` driver script. The ``Ensemble`` creates two
    identical ``Ensemble`` members. The producer script is executed
-   in both ``Ensemble`` members to send two prefixed tensors to the ``Orchestrator``.
+   in both ``Ensemble`` members to send two prefixed tensors to the ``FeatureStore``.
    The source code example is available in the dropdown below for convenient customization.
 
 .. dropdown:: Application Producer Script Source Code
@@ -1007,7 +1007,7 @@ This example consists of **three** Python scripts:
     .. literalinclude:: tutorials/doc_examples/ensemble_doc_examples/application_producer_script.py
 
 1. :ref:`Application Consumer Script<app_con_prefix_ensemble>`: This script is encapsulated
-   within a SmartSim ``Model`` in the ``Experiment`` driver script. The script requests the
+   within a SmartSim ``Application`` in the ``Experiment`` driver script. The script requests the
    prefixed tensors placed by the producer script. The source code example is available in
    the dropdown below for convenient customization.
 
@@ -1016,8 +1016,8 @@ This example consists of **three** Python scripts:
     .. literalinclude:: tutorials/doc_examples/ensemble_doc_examples/application_consumer_script.py
 
 1. :ref:`Experiment Driver Script<exp_prefix_ensemble>`: The driver script launches the
-   ``Orchestrator``, the ``Ensemble`` (which sends prefixed keys to the ``Orchestrator``),
-   and the ``Model`` (which requests prefixed keys from the ``Orchestrator``). The
+   ``FeatureStore``, the ``Ensemble`` (which sends prefixed keys to the ``FeatureStore``),
+   and the ``Application`` (which requests prefixed keys from the ``FeatureStore``). The
    ``Experiment`` driver script is the centralized spot that controls the workflow.
    The source code example is available in the dropdown below for convenient execution and
    customization.
@@ -1033,11 +1033,11 @@ The Application Producer Script
 -------------------------------
 In the ``Experiment`` driver script, we instruct SmartSim to create an ``Ensemble`` comprised of
 two duplicate members that execute this producer script. In the producer script, a SmartRedis ``Client`` sends a
-tensor to the ``Orchestrator``. Since the ``Ensemble`` members are identical and therefore use the same
-application code, two tensors are sent to the ``Orchestrator``. Without prefixing enabled on the ``Ensemble``
+tensor to the ``FeatureStore``. Since the ``Ensemble`` members are identical and therefore use the same
+application code, two tensors are sent to the ``FeatureStore``. Without prefixing enabled on the ``Ensemble``
 the keys can be overwritten. To prevent this, we enable key prefixing on the ``Ensemble`` in the driver script
 via ``Ensemble.enable_key_prefixing``. When the producer script is executed by each ``Ensemble`` member, a
-tensor is sent to the ``Orchestrator`` with the ``Ensemble`` member `name` prepended to the tensor `name`.
+tensor is sent to the ``FeatureStore`` with the ``Ensemble`` member `name` prepended to the tensor `name`.
 
 Here we provide the producer script that is applied to the ``Ensemble`` members:
 
@@ -1045,7 +1045,7 @@ Here we provide the producer script that is applied to the ``Ensemble`` members:
   :language: python
   :linenos:
 
-After the completion of ``Ensemble`` members `producer_0` and `producer_1`, the contents of the ``Orchestrator`` are:
+After the completion of ``Ensemble`` members `producer_0` and `producer_1`, the contents of the ``FeatureStore`` are:
 
 .. code-block:: bash
 
@@ -1057,14 +1057,14 @@ After the completion of ``Ensemble`` members `producer_0` and `producer_1`, the 
 -------------------------------
 The Application Consumer Script
 -------------------------------
-In the ``Experiment`` driver script, we initialize a consumer ``Model`` that encapsulates
+In the ``Experiment`` driver script, we initialize a consumer ``Application`` that encapsulates
 the consumer application to request the tensors produced from the ``Ensemble``. To do
 so, we use SmartRedis key prefixing functionality to instruct the SmartRedis ``Client``
 to append the name of an ``Ensemble`` member to the key `name`.
 
 .. seealso::
     For more information on ``Client`` prefixing functions, visit the :ref:`Client functions<client_prefix_func>`
-    subsection of the ``Model`` documentation.
+    subsection of the ``Application`` documentation.
 
 To begin, specify the imports and initialize a SmartRedis ``Client``:
 
@@ -1076,7 +1076,7 @@ To begin, specify the imports and initialize a SmartRedis ``Client``:
 To retrieve the tensor from the first ``Ensemble`` member named `producer_0`, use
 ``Client.set_data_source``. Specify the name of the first ``Ensemble`` member
 as an argument to the function. This instructs SmartSim to append the ``Ensemble`` member name to the data
-search on the ``Orchestrator``. When ``Client.poll_tensor`` is executed,
+search on the ``FeatureStore``. When ``Client.poll_tensor`` is executed,
 the SmartRedis `client` will poll for key, `producer_0.tensor`:
 
 .. literalinclude:: tutorials/doc_examples/ensemble_doc_examples/application_consumer_script.py
@@ -1109,7 +1109,7 @@ When the ``Experiment`` driver script is executed, the following output will app
 .. warning::
     For SmartSim to recognize the ``Ensemble`` member names as a valid data source
     to ``Client.set_data_source``, you must register each ``Ensemble`` member
-    on the consumer ``Model`` in the driver script via ``Model.register_incoming_entity``.
+    on the consumer ``Application`` in the driver script via ``Model.register_incoming_entity``.
     We demonstrate this in the ``Experiment`` driver script section of the example.
 
 .. _exp_prefix_ensemble:
@@ -1120,13 +1120,13 @@ The Experiment Script
 The ``Experiment`` driver script manages all workflow components and utilizes the producer and consumer
 application scripts. In the example, the ``Experiment``:
 
-- launches standalone ``Orchestrator``
+- launches standalone ``FeatureStore``
 - launches an ``Ensemble`` via the replicas initialization strategy
-- launches a consumer ``Model``
-- clobbers the ``Orchestrator``
+- launches a consumer ``Application``
+- clobbers the ``FeatureStore``
 
 To begin, add the necessary imports, initialize an ``Experiment`` instance and initialize the
-standalone ``Orchestrator``:
+standalone ``FeatureStore``:
 
 .. literalinclude:: tutorials/doc_examples/ensemble_doc_examples/experiment_driver.py
   :language: python
@@ -1143,21 +1143,21 @@ producer script:
   :linenos:
   :lines: 11-12
 
-Next, initialize an ``Ensemble`` by specifying `ensemble_settings` and the number of ``Model`` `replicas` to create:
+Next, initialize an ``Ensemble`` by specifying `ensemble_settings` and the number of ``Application`` `replicas` to create:
 
 .. literalinclude:: tutorials/doc_examples/ensemble_doc_examples/experiment_driver.py
   :language: python
   :linenos:
   :lines: 14-15
 
-Instruct SmartSim to prefix all tensors sent to the ``Orchestrator`` from the ``Ensemble`` via ``Ensemble.enable_key_prefixing``:
+Instruct SmartSim to prefix all tensors sent to the ``FeatureStore`` from the ``Ensemble`` via ``Ensemble.enable_key_prefixing``:
 
 .. literalinclude:: tutorials/doc_examples/ensemble_doc_examples/experiment_driver.py
   :language: python
   :linenos:
   :lines: 17-18
 
-Next, initialize the consumer ``Model``. The consumer ``Model`` application requests
+Next, initialize the consumer ``Application``. The consumer ``Application`` application requests
 the prefixed tensors produced by the ``Ensemble``:
 
 .. literalinclude:: tutorials/doc_examples/ensemble_doc_examples/experiment_driver.py
@@ -1172,7 +1172,7 @@ Next, organize the SmartSim entity output files into a single ``Experiment`` fol
   :linenos:
   :lines: 25-26
 
-Launch the ``Orchestrator``:
+Launch the ``FeatureStore``:
 
 .. literalinclude:: tutorials/doc_examples/ensemble_doc_examples/experiment_driver.py
   :language: python
@@ -1188,10 +1188,10 @@ Launch the ``Ensemble``:
 
 Set `block=True` so that ``Experiment.start`` waits until the last ``Ensemble`` member has finished before continuing.
 
-The consumer ``Model`` application script uses ``Client.set_data_source`` which
+The consumer ``Application`` application script uses ``Client.set_data_source`` which
 accepts the ``Ensemble`` member names when searching for prefixed
-keys in the ``Orchestrator``. In order for SmartSim to recognize the ``Ensemble``
-member names as a valid data source in the consumer ``Model``, we must register
+keys in the ``FeatureStore``. In order for SmartSim to recognize the ``Ensemble``
+member names as a valid data source in the consumer ``Application``, we must register
 the entity interaction:
 
 .. literalinclude:: tutorials/doc_examples/ensemble_doc_examples/experiment_driver.py
@@ -1199,14 +1199,14 @@ the entity interaction:
   :linenos:
   :lines: 34-36
 
-Launch the consumer ``Model``:
+Launch the consumer ``Application``:
 
 .. literalinclude:: tutorials/doc_examples/ensemble_doc_examples/experiment_driver.py
   :language: python
   :linenos:
   :lines: 38-39
 
-To finish, tear down the standalone ``Orchestrator``:
+To finish, tear down the standalone ``FeatureStore``:
 
 .. literalinclude:: tutorials/doc_examples/ensemble_doc_examples/experiment_driver.py
   :language: python

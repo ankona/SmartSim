@@ -26,7 +26,7 @@ is completely up to the user.
  - Visualize the progression of a simulation integration from a Jupyter notebook
 
 The figure below shows the architecture of SmartSim for a given use case.
-SmartSim can create, configure and launch workloads (called a ``Model``),
+SmartSim can create, configure and launch workloads (called a ``Application``),
 as well as groups of workloads (``Ensembles``). The data communication between
 a workload and in-memory storage is handled by the SmartRedis clients, available
 in Fortran, C, C++, and Python.
@@ -70,7 +70,7 @@ if it is running on a supercomputer or cluster system.
 
 The IL can deploy a distributed, shared-nothing, in-memory cluster of Redis
 instances across multiple compute nodes of a supercomputer, cluster, or laptop.
-In SmartSim, this clustered Redis deployment is called the ``Orchestrator``.
+In SmartSim, this clustered Redis deployment is called the ``FeatureStore``.
 
 By coupling the Orchestrator with HPC applications, users can connect their
 workloads to other applications, like trained machine learning models, with
