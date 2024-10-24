@@ -13,11 +13,7 @@ launching capabilities tailored for specific workload managers (WLMs). Each Smar
 `launcher` interfaces with a ``BatchSettings`` subclass specific to a system's WLM:
 
 - The Slurm `launcher` supports:
-   - :ref:`SbatchSettings<sbatch_api>`
-- The PBS Pro `launcher` supports:
-   - :ref:`QsubBatchSettings<qsub_api>`
-- The LSF `launcher` supports:
-   - :ref:`BsubBatchSettings<bsub_api>`
+   - :ref:`LaunchSettings<ls_api>`
 
 .. note::
       The local `launcher` does not support batch jobs.

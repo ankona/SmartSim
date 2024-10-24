@@ -27,8 +27,8 @@ Settings are given to ``Model`` and ``Ensemble`` objects to provide parameters f
 Once a workflow component is initialized (e.g. ``Orchestrator``, ``Model`` or ``Ensemble``), a user has access
 to the associated entity API which supports configuring and retrieving the entities' information:
 
-* :ref:`Orchestrator API<orchestrator_api>`
-* :ref:`Model API<model_api>`
+* :ref:`FeatureStore API<feature_api>`
+* :ref:`Application API<application_api>`
 * :ref:`Ensemble API<ensemble_api>`
 
 There is no limit to the number of SmartSim entities a user can
@@ -103,10 +103,10 @@ associated ``Experiment.create_...`` factory method shown below.
      - Return Type
    * - ``create_database``
      - ``orch = exp.create_database([port, db_nodes, ...])``
-     - :ref:`Orchestrator <orchestrator_api>`
+     - :ref:`FeatureStore <feature_api>`
    * - ``create_model``
      - ``model = exp.create_model(name, run_settings)``
-     - :ref:`Model <model_api>`
+     - :ref:`Application <application_api>`
    * - ``create_ensemble``
      - ``ensemble = exp.create_ensemble(name[, params, ...])``
      - :ref:`Ensemble <ensemble_api>`
