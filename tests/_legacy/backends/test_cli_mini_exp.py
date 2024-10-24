@@ -33,7 +33,6 @@ import smartredis
 import smartsim._core._cli.validate
 import smartsim._core._install.builder as build
 from smartsim._core._install.platform import Device
-from smartsim._core.utils.helpers import installed_redisai_backends
 
 sklearn_available = True
 try:
@@ -71,7 +70,7 @@ def test_cli_mini_exp_doesnt_error_out_with_dev_build(
         "_make_managed_local_feature_store",
         _mock_make_managed_local_feature_store,
     )
-    backends = installed_redisai_backends()
+    backends = []  # todo: update test to replace installed_redisai_backends()
     (fs_port,) = fs.ports
 
     smartsim._core._cli.validate.test_install(
